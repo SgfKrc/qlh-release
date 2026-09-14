@@ -1,0 +1,12 @@
+.venv-packaging/
+.venv-packaging-cuda/
+packaging/.signing-keys/
+packaging/build/
+packaging/dist/
+build/
+dist/
+.signing-keys/
+_to_delete/
+*.log
+__pycache__/
+*.pyc
