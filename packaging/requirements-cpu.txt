@@ -22,8 +22,9 @@
 llama-cpp-python>=0.3.0
 
 # --- 模型加载与量化 ---
-transformers>=4.47.0,<4.48.0    # Qwen remote code + DeepSeek-R1 Distill 兼容窗口
+transformers>=5.17.0,<5.18.0     # 主运行时统一窗口（2026-09-19 由 4.47.1 升级）
 accelerate>=1.0.0                # 模型加载加速
+huggingface_hub>=1.5.0,<2.0.0    # 5.x 传递要求
 transformers-stream-generator>=0.0.4  # Qwen-1.8B remote code 依赖
 einops>=0.6.0                    # Qwen-1.8B rotary embedding / rearrange
 tiktoken>=0.5.0                  # Qwen-1.8B remote tokenizer 依赖

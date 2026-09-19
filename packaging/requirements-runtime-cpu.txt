@@ -9,8 +9,9 @@
 # 再对整条命令加 --index-url 会让 transformers 等因 PyTorch 索引缺失而装不上）。
 # 升级运行时只 pip upgrade，不重装安装包。
 
-transformers>=4.47.0,<4.48.0
+transformers>=5.17.0,<5.18.0
 accelerate>=1.0.0
+huggingface_hub>=1.5.0,<2.0.0
 transformers-stream-generator>=0.0.4
 einops>=0.6.0
 tiktoken>=0.5.0
