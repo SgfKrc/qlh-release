@@ -38,7 +38,7 @@ importlib_metadata==9.0.0
 iniconfig==2.3.0
 Jinja2==3.1.6
 linkify-it-py==2.1.0
-llama_cpp_python==0.3.33
+llama_cpp_python==0.3.35
 markdown-it-py==4.2.0
 MarkupSafe==3.0.3
 mdit-py-plugins==0.6.1
