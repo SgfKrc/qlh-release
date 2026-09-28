@@ -1,0 +1,11 @@
+# QLH Edge runtime profile: GGUF/llama.cpp only.
+# This profile is intentionally torch/Transformers-free. Keep versions pinned
+# or bounded here when a release artifact is cut; the profile contract must not
+# silently grow a PyTorch dependency.
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+httpx==0.28.1
+psutil==7.2.2
+python-dotenv>=1.0.0
+llama-cpp-python==0.3.35
+textual>=8,<9

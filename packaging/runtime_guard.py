@@ -23,15 +23,21 @@ from typing import Any, Callable, Sequence
 
 RUNTIME_ENV_VAR = "QLH_RUNTIME_DIR"
 PYTORCH_CPU_INDEX = "https://download.pytorch.org/whl/cpu"
+RUNTIME_PROFILES: tuple[str, ...] = ("llama_cpp_only", "torch_cpu", "torch_cuda")
 
 # 运行时必须可导入的模块（对瘦身包的主程序）。torch 系是核心，其余为主程序
 # 启动/推理路径确定会 import 的模块；缺失即触发 pip 引导。注意：这里是"启动必需
 # 最小集"，长尾依赖（einops/tiktoken/pandas 等）由 requirements-runtime 安装并
 # 在首次引导时一起装上；probe 只防"旧 venv 缺启动必败模块"。
-RUNTIME_REQUIRED_MODULES: tuple[str, ...] = (
+_TORCH_RUNTIME_MODULES: tuple[str, ...] = (
     "torch", "transformers", "accelerate",
     "fastapi", "uvicorn", "httpx", "psutil", "dotenv", "llama_cpp",
 )
+_LLAMA_CPP_ONLY_MODULES: tuple[str, ...] = (
+    "fastapi", "uvicorn", "httpx", "psutil", "dotenv", "llama_cpp",
+)
+# Backward-compatible export for callers that used the old CPU/Torch default.
+RUNTIME_REQUIRED_MODULES = _TORCH_RUNTIME_MODULES
 
 
 @dataclass
@@ -42,6 +48,7 @@ class RuntimeContext:
     python_fallback: Path | None = None  # 无 venv 时回退解释器（默认 sys.executable）
     proxy: str = ""
     runtime_dir: Path | None = None  # 覆盖用户级 runtime 目录（测试/自定义部署用）
+    profile: str | None = None       # llama_cpp_only | torch_cpu | torch_cuda
 
 
 def runtime_dir() -> Path:
@@ -63,8 +70,22 @@ def venv_python(venv_dir: Path) -> Path:
 
 
 def required_modules(ctx: RuntimeContext) -> tuple[str, ...]:
-    # torch 系 CUDA 时额外不需要不同模块集（torch 装 CUDA 源即可），保持同一清单
-    return RUNTIME_REQUIRED_MODULES
+    profile = runtime_profile(ctx)
+    return _LLAMA_CPP_ONLY_MODULES if profile == "llama_cpp_only" else _TORCH_RUNTIME_MODULES
+
+
+def runtime_profile(ctx: RuntimeContext) -> str:
+    """Resolve an explicit profile while preserving the legacy engine mapping."""
+    profile = str(ctx.profile or "").strip().lower()
+    if not profile:
+        profile = "torch_cuda" if ctx.engine == "cuda" else "torch_cpu"
+    if profile not in RUNTIME_PROFILES:
+        raise ValueError(f"unsupported runtime profile: {profile}")
+    if profile == "torch_cuda" and ctx.engine != "cuda":
+        raise ValueError("torch_cuda profile requires engine=cuda")
+    if profile == "torch_cpu" and ctx.engine == "cuda":
+        raise ValueError("torch_cpu profile requires engine=cpu")
+    return profile
 
 
 def probe_missing(python: Path, modules: Sequence[str]) -> list[str]:
@@ -92,7 +113,7 @@ def probe_missing(python: Path, modules: Sequence[str]) -> list[str]:
 
 def torch_index(ctx: RuntimeContext) -> str:
     """运行时要用的 PyTorch index URL（cuda="" 表示官方默认源）。"""
-    if ctx.engine == "cuda":
+    if runtime_profile(ctx) != "torch_cpu":
         return ""
     return PYTORCH_CPU_INDEX
 
@@ -101,6 +122,9 @@ def torch_index(ctx: RuntimeContext) -> str:
 RUNTIME_FALLBACK_PACKAGES: tuple[str, ...] = (
     "transformers", "accelerate", "fastapi", "uvicorn",
     "httpx", "psutil", "python-dotenv", "llama-cpp-python",
+)
+LLAMA_CPP_ONLY_FALLBACK_PACKAGES: tuple[str, ...] = (
+    "fastapi", "uvicorn", "httpx", "psutil", "python-dotenv", "llama-cpp-python",
 )
 
 
@@ -118,13 +142,19 @@ def build_pip_commands(
     if ctx.proxy:
         base = list(base) + ["--proxy", ctx.proxy]
     commands: list[list[str]] = []
-    if ctx.engine == "cpu":
+    profile = runtime_profile(ctx)
+    if profile == "llama_cpp_only":
+        if requirements is not None and requirements.is_file():
+            commands.append(list(base) + ["-r", str(requirements)])
+        else:
+            commands.append(list(base) + list(LLAMA_CPP_ONLY_FALLBACK_PACKAGES))
+    elif profile == "torch_cpu":
         commands.append(list(base) + ["torch", "--index-url", PYTORCH_CPU_INDEX])
         if requirements is not None and requirements.is_file():
             commands.append(list(base) + ["-r", str(requirements)])
         else:
             commands.append(list(base) + list(RUNTIME_FALLBACK_PACKAGES))
-    else:
+    else:  # torch_cuda
         if requirements is not None and requirements.is_file():
             commands.append(list(base) + ["-r", str(requirements)])
         else:
@@ -143,6 +173,9 @@ def ensure_runtime(
     返回报告：state ∈ {ok, installed, failed}、python、missing_before / missing_after。
     真正的 pip/网络执行通过 ``runner`` 注入；默认用 ``subprocess.run``（需联网）。
     """
+    # Validate before creating a venv or probing the filesystem so a mismatched
+    # engine/profile cannot leave behind a partially initialized runtime.
+    profile = runtime_profile(ctx)
     runner = runner or (lambda cmd: subprocess.run(cmd, check=False).returncode)
     target_venv = (
         ctx.runtime_dir if ctx.runtime_dir is not None else runtime_dir()
@@ -158,12 +191,14 @@ def ensure_runtime(
             return {
                 "state": "failed", "python": str(python),
                 "error": f"create venv failed: {exc.__class__.__name__}",
+                "profile": profile,
             }
 
     missing = probe_missing(python, required_modules(ctx))
     if not missing:
         return {
             "state": "ok", "python": str(python), "created": created,
+            "profile": profile,
             "missing_before": [], "missing_after": [],
         }
 
@@ -174,11 +209,13 @@ def ensure_runtime(
     if missing_after:
         return {
             "state": "failed", "python": str(python), "created": created,
+            "profile": profile,
             "exit": exit_codes,
             "error": "runtime install did not satisfy required modules",
             "missing_before": missing, "missing_after": missing_after,
         }
     return {
         "state": "installed", "python": str(python), "created": created,
+        "profile": profile,
         "exit": exit_codes, "missing_before": missing, "missing_after": [],
     }

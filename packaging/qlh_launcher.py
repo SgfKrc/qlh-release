@@ -174,12 +174,19 @@ def _slim_src_root(root: Path) -> Path | None:
     return None
 
 
-def _requirements_path(root: Path, engine: str) -> Path:
+def _requirements_path(root: Path, engine: str, profile: str | None = None) -> Path:
     """外部运行时清单位置：优先安装树内 _internal/packaging/，其次打包树根。"""
+    # Keep the shipped CPU/CUDA filenames stable; the new Edge profile gets
+    # its own name so an existing installation can be upgraded in place.
+    filename = (
+        "requirements-runtime-llama_cpp_only.txt"
+        if profile == "llama_cpp_only"
+        else f"requirements-runtime-{engine}.txt"
+    )
     candidates = [
         Path(root).expanduser() / "_internal" / "packaging"
-        / f"requirements-runtime-{engine}.txt",
-        Path(root).expanduser() / "packaging" / f"requirements-runtime-{engine}.txt",
+        / filename,
+        Path(root).expanduser() / "packaging" / filename,
     ]
     for candidate in candidates:
         if candidate.is_file():
@@ -196,17 +203,23 @@ def _runtime_proxy() -> str:
     )
 
 
-def runtime_app_command(root: Path, *, engine: str | None = None) -> list[str] | None:
+def runtime_app_command(
+    root: Path, *, engine: str | None = None, profile: str | None = None,
+) -> list[str] | None:
     """瘦身包：确保外部运行时就绪（缺失则 pip 引导），返回以外部 runtime venv 的
     python 启动 uvicorn 的命令。引擎缺失/引导失败 → None。"""
     from runtime_guard import RuntimeContext, runtime_dir, venv_python, ensure_runtime
     engine = (engine or os.environ.get("QLH_RUNTIME_ENGINE", "cpu")).strip().lower()
     if engine not in {"cpu", "cuda"}:
         engine = "cpu"
+    profile = (profile or os.environ.get("QLH_RUNTIME_PROFILE", "")).strip().lower() or None
+    if profile is None:
+        profile = "torch_cuda" if engine == "cuda" else "torch_cpu"
     root = Path(root).expanduser()
-    requirements = _requirements_path(root, engine)
+    requirements = _requirements_path(root, engine, profile)
     ctx = RuntimeContext(
-        root=root, engine=engine, requirements=requirements, proxy=_runtime_proxy(),
+        root=root, engine=engine, profile=profile,
+        requirements=requirements, proxy=_runtime_proxy(),
     )
     report = ensure_runtime(ctx)
     if report["state"] not in {"ok", "installed"}:
@@ -228,13 +241,22 @@ def _runtime_check_main(args: Any) -> int:
               or os.environ.get("QLH_RUNTIME_ENGINE", "cpu")).strip().lower()
     if engine not in {"cpu", "cuda"}:
         engine = "cpu"
-    requirements = _requirements_path(root, engine)
+    profile = (getattr(args, "runtime_profile", None)
+               or os.environ.get("QLH_RUNTIME_PROFILE", "")).strip().lower() or None
+    if profile is None:
+        profile = "torch_cuda" if engine == "cuda" else "torch_cpu"
+    requirements = _requirements_path(root, engine, profile)
     ctx = RuntimeContext(
-        root=root, engine=engine, requirements=requirements, proxy=_runtime_proxy(),
+        root=root, engine=engine, profile=profile,
+        requirements=requirements, proxy=_runtime_proxy(),
     )
     report = ensure_runtime(ctx)
     keys = ("state", "created", "exit", "missing_before", "missing_after", "error")
-    summary = {"state": report["state"], "runtime_python": str(venv_python(runtime_dir()))}
+    summary = {
+        "state": report["state"],
+        "profile": report.get("profile", profile),
+        "runtime_python": str(venv_python(runtime_dir())),
+    }
     for key in keys:
         if key in report:
             summary[key] = report[key]
@@ -1101,6 +1123,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="检查/引导外部运行时依赖（瘦身包），不启动主程序")
     parser.add_argument("--runtime-engine", choices=("cpu", "cuda"),
                         help="外部运行时引擎（瘦身包）；默认 QLH_RUNTIME_ENGINE 或 cpu")
+    parser.add_argument("--runtime-profile", choices=("llama_cpp_only", "torch_cpu", "torch_cuda"),
+                        help="外部运行时依赖 profile；默认按引擎选择 torch_cpu/torch_cuda，"
+                             "Edge 无 torch 使用 llama_cpp_only")
     parser.add_argument("--error", help="optional local startup error text for diagnose")
     parser.add_argument("--diagnosis-output", help="local JSON output path for diagnose")
     parser.add_argument("--repair-output", help="local JSON output path for repair")
@@ -1117,6 +1142,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # Forward explicit runtime selection to the slim app path.  The launcher
+    # itself remains dependency-free; only the child runtime consumes it.
+    if args.runtime_profile:
+        os.environ["QLH_RUNTIME_PROFILE"] = args.runtime_profile
+    if args.runtime_engine:
+        os.environ["QLH_RUNTIME_ENGINE"] = args.runtime_engine
     if args.health_check:
         return _self_health_check()
     if args.runtime_check:

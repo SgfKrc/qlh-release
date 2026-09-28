@@ -93,6 +93,26 @@ def test_build_pip_commands_cpu_fallback_does_not_pin_rest_to_pytorch(tmp_path):
     assert "transformers" in commands[1] and "--index-url" not in commands[1]
 
 
+def test_llama_cpp_only_profile_never_probes_or_installs_torch(tmp_path):
+    ctx = _ctx(tmp_path, engine="cpu")
+    ctx.profile = "llama_cpp_only"
+    assert "torch" not in guard.required_modules(ctx)
+    assert "transformers" not in guard.required_modules(ctx)
+    commands = guard.build_pip_commands(
+        guard.venv_python(tmp_path / "runtime"), tmp_path / "missing.txt", ctx,
+    )
+    assert len(commands) == 1
+    assert "torch" not in " ".join(commands[0])
+    assert "transformers" not in " ".join(commands[0])
+
+
+def test_runtime_profile_engine_mismatch_is_rejected(tmp_path):
+    ctx = _ctx(tmp_path, engine="cuda")
+    ctx.profile = "torch_cpu"
+    with pytest.raises(ValueError, match="requires engine=cpu"):
+        guard.required_modules(ctx)
+
+
 def _runner_ok(command):
     return 0
 

@@ -62,6 +62,26 @@ def test_runtime_app_command_returns_uvicorn(monkeypatch, tmp_path):
     assert seen[-1] == "requirements-runtime-cuda.txt"
 
 
+def test_runtime_app_command_supports_llama_cpp_only_profile(monkeypatch, tmp_path):
+    tree = _slim_tree(tmp_path)
+    (tree / "packaging" / "requirements-runtime-llama_cpp_only.txt").write_text("", encoding="utf-8")
+    seen = []
+    def spy(ctx):
+        seen.append((ctx.profile, ctx.requirements.name))
+        return {"state": "ok", "profile": ctx.profile}
+    monkeypatch.setattr(rg, "ensure_runtime", spy)
+    cmd = ql.runtime_app_command(tree, engine="cpu", profile="llama_cpp_only")
+    assert "uvicorn" in cmd
+    assert seen == [("llama_cpp_only", "requirements-runtime-llama_cpp_only.txt")]
+
+
+def test_runtime_profile_cli_is_explicit():
+    args = ql.build_parser().parse_args([
+        "--runtime-check", "--runtime-engine", "cpu", "--runtime-profile", "llama_cpp_only",
+    ])
+    assert args.runtime_profile == "llama_cpp_only"
+
+
 def test_runtime_app_command_none_on_failure(monkeypatch, tmp_path):
     tree = _slim_tree(tmp_path)
     monkeypatch.setattr(rg, "ensure_runtime", lambda ctx: {"state": "failed", "error": "install failed"})

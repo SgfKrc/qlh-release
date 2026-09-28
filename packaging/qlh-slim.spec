@@ -5,7 +5,7 @@
   - QLH-Edge-Inference.exe：轻量引导器（qlh_launcher.py，不 import 推理运行时）
   - _internal/src/            ：主程序源码（运行时由外部 venv python 以源码方式运行）
   - _internal/frontend_cybergothic/dist/  ：CyberGothic 产品前端静态文件
-  - _internal/packaging/      ：外部运行时依赖清单（cpu/cuda）
+  - _internal/packaging/      ：外部运行时依赖清单（llama_cpp_only/cpu/cuda）
   - _internal/pubkeys         ：验签公钥
 PyTorch / Transformers / llama.cpp / FastAPI / uvicorn 等全部从包体**排除**，
 由 qlh_launcher 每次启动用 runtime_guard 检查外部 runtime venv，缺失则
@@ -29,6 +29,7 @@ _PUBKEYS = os.path.join(SPECPATH, "pubkeys")
 _ICO = os.path.join(SPECPATH, "leds.ico")
 
 _RUNTIME_REQS = [
+    (os.path.join(SPECPATH, "requirements-runtime-llama_cpp_only.txt"), "packaging"),
     (os.path.join(SPECPATH, "requirements-runtime-cpu.txt"), "packaging"),
     (os.path.join(SPECPATH, "requirements-runtime-cuda.txt"), "packaging"),
 ]

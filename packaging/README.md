@@ -170,14 +170,15 @@ cd packaging
 cd frontend_cybergothic && npm run build                    # 生成 frontend_cybergothic/dist
 .venv-packaging\Scripts\python -m PyInstaller packaging\qlh-slim.spec --noconfirm
 # 产物: dist\QLH-Edge-Inference\  （仅引导器 + _internal/src + frontend_cybergothic/dist +
-#       requirements-runtime-{cpu,cuda}.txt + pubkeys，不含 torch 系）
+#       requirements-runtime-{llama_cpp_only,cpu,cuda}.txt + pubkeys，不含 torch 系）
 ```
 
 **首次启动（自动）**：`QLH-Edge-Inference.exe`（= qlh_launcher）识别瘦身包后：
 1. 检查用户级外部运行时 venv `%LOCALAPPDATA%\QLH-Edge-Inference\runtime`；
-2. probe 必需模块（torch/transformers/accelerate/fastapi/uvicorn/httpx/psutil/dotenv/llama_cpp）；
+2. 按 `QLH_RUNTIME_PROFILE` / `--runtime-profile` 选择依赖 profile：`llama_cpp_only` 只 probe GGUF/HTTP 最小集，`torch_cpu` / `torch_cuda` 才 probe torch/Transformers；
 3. 缺失则按引擎 pip 引导：
-   - **CPU**：`pip install torch --index-url https://download.pytorch.org/whl/cpu` **单独装 torch**，
+   - **Edge/无 CUDA**：使用 `requirements-runtime-llama_cpp_only.txt`，不探测、不安装 torch；
+   - **CPU 兼容 profile**：`pip install torch --index-url https://download.pytorch.org/whl/cpu` **单独装 torch**，
      再 `pip install -r requirements-runtime-cpu.txt`（其余走默认 PyPI——不要对整条
      `-r` 加 `--index-url`，PyTorch 索引没有 transformers 等）；
    - **CUDA**：`pip install -r requirements-runtime-cuda.txt`（torch 官方默认 CUDA wheel）；
