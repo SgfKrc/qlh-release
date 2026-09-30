@@ -21,6 +21,12 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
+#: ★ 构建期 runtime profile 的**单一判据来源**是 `runtime_guard.RUNTIME_PROFILES`
+#: （`llama_cpp_only` / `torch_cpu` / `torch_cuda`）。manifest 只做校验，不再
+#: 各自维护一份清单 —— 两处清单漂移会让"构建期选的 profile"与"运行时可用的
+#: profile"对不上，而这条不一致正是本字段要消除的。
+from runtime_guard import RUNTIME_PROFILES
+
 
 SCHEMA_VERSION = 1
 MANIFEST_TYPE = "qlh_install"
@@ -118,6 +124,23 @@ def _validate_version(value: Any) -> str:
     if any(ch in version for ch in "/\\"):
         raise InstallManifestError(f"invalid version: {value!r}")
     return version
+
+
+def _validate_runtime_profile(value: Any) -> str:
+    """校验构建期 runtime profile 值（判据来自 `runtime_guard.RUNTIME_PROFILES`）。
+
+    只接受已知 profile，未知值一律报错：已签名的 manifest 是安装/升级/repair 与
+    节点能力广告的共同依据，放行未知值等于让"包声称的能力"无从校验。
+    """
+    if not isinstance(value, str):
+        raise InstallManifestError("runtime_profile must be a string")
+    profile = value.strip().lower()
+    if profile not in RUNTIME_PROFILES:
+        raise InstallManifestError(
+            f"unsupported runtime_profile: {value!r} "
+            f"(expected one of {sorted(RUNTIME_PROFILES)})"
+        )
+    return profile
 
 
 def normalize_relative_path(value: Any) -> str:
@@ -282,6 +305,7 @@ def build_install_manifest(
     package_kind: str,
     includes: Sequence[IncludeSource] = (),
     generated_at: str | None = None,
+    runtime_profile: str | None = None,
 ) -> dict[str, Any]:
     mapping: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -295,6 +319,11 @@ def build_install_manifest(
         "generated_at": generated_at or _utc_now(),
         "files": collect_install_files(root, includes=includes),
     }
+    if runtime_profile is not None:
+        # ★ 构建期选定的 runtime profile 随 manifest 一起**签名**发布：
+        #   安装/升级/repair 与节点能力广告都以此为准，不再靠"运行时探测"
+        #   反推包的能力（探测会把"这台机器碰巧有 torch"误当成"这个包支持 torch"）。
+        mapping["runtime_profile"] = _validate_runtime_profile(runtime_profile)
     validate_install_manifest(mapping, require_signature=False)
     return mapping
 
@@ -309,11 +338,14 @@ def validate_install_manifest(
         "variant", "package_kind", "scope", "generated_at", "files",
     }
     signature_fields = {"key_id", "signed_at", "signature"}
+    #: 可选字段：缺席时 manifest 仍合法（兼容先于本字段发布的产物），
+    #: 但**一旦出现就必须合法** —— 不做"值不认识就放行"的降级。
+    optional_fields = {"runtime_profile"}
     keys = set(mapping)
     missing = required - keys
     if missing:
         raise InstallManifestError(f"install manifest is missing fields: {sorted(missing)}")
-    unknown = keys - required - signature_fields
+    unknown = keys - required - signature_fields - optional_fields
     if unknown:
         raise InstallManifestError(f"install manifest has unknown fields: {sorted(unknown)}")
     present_signature = keys & signature_fields
@@ -330,6 +362,8 @@ def validate_install_manifest(
     if not isinstance(mapping["platform"], str) or mapping["platform"] not in ALLOWED_PLATFORMS:
         raise InstallManifestError(f"unsupported platform: {mapping['platform']!r}")
     _validate_identifier(mapping["variant"], field="variant")
+    if "runtime_profile" in mapping:
+        _validate_runtime_profile(mapping["runtime_profile"])
     if (
         not isinstance(mapping["package_kind"], str)
         or mapping["package_kind"] not in ALLOWED_PACKAGE_KINDS

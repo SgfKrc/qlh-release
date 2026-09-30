@@ -501,3 +501,48 @@ def test_release_build_entrypoints_require_and_package_signed_baseline():
         assert helper_build < manifest_build
         assert "QLH-Data-Retention.exe" in build
     assert (project / "packaging" / "install_manifest.py").is_file()
+
+
+def _slim_manifest(tmp_path, name: str, **kwargs):
+    root = _application_tree(tmp_path / name)
+    return install_manifest.build_install_manifest(
+        root,
+        app_id="qlh-edge-inference",
+        version="0.1.8.1",
+        platform="windows",
+        variant="slim",
+        package_kind="application",
+        **kwargs,
+    )
+
+
+def test_manifest_records_build_time_runtime_profile(tmp_path):
+    """★ 构建期选定的 profile 必须随 manifest 落盘（并因此被签名）。"""
+    manifest = _slim_manifest(tmp_path, "app-profile", runtime_profile="llama_cpp_only")
+    assert manifest["runtime_profile"] == "llama_cpp_only"
+    install_manifest.validate_install_manifest(manifest, require_signature=False)
+
+
+def test_manifest_normalizes_runtime_profile_case_and_padding(tmp_path):
+    manifest = _slim_manifest(tmp_path, "app-profile-pad", runtime_profile="  Torch_CPU  ")
+    assert manifest["runtime_profile"] == "torch_cpu"
+
+
+def test_manifest_rejects_unknown_runtime_profile(tmp_path):
+    """未知 profile 必须报错 —— 不做"不认识就放行"的降级。"""
+    with pytest.raises(install_manifest.InstallManifestError, match="runtime_profile"):
+        _slim_manifest(tmp_path, "app-bad-profile", runtime_profile="torch")
+
+
+def test_validate_rejects_tampered_runtime_profile_value(tmp_path):
+    manifest = _slim_manifest(tmp_path, "app-tampered", runtime_profile="torch_cpu")
+    manifest["runtime_profile"] = "not-a-profile"
+    with pytest.raises(install_manifest.InstallManifestError, match="runtime_profile"):
+        install_manifest.validate_install_manifest(manifest, require_signature=False)
+
+
+def test_manifest_without_runtime_profile_stays_valid(tmp_path):
+    """兼容本字段发布之前的产物：缺席仍合法（"没写"不等于"写错"）。"""
+    manifest = _slim_manifest(tmp_path, "app-no-profile")
+    assert "runtime_profile" not in manifest
+    install_manifest.validate_install_manifest(manifest, require_signature=False)

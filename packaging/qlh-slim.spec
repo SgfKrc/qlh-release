@@ -19,6 +19,22 @@ pip 引导（CPU --index-url .../whl/cpu；CUDA 官方默认），再用该 venv
 """
 
 import os
+import sys
+
+#: ★ 构建期**显式选** runtime profile（`QLH_BUILD_PROFILE`）。默认 `torch_cpu`
+#: 保留旧行为。选定后包内**只带这一份**运行时依赖清单 —— "这个包需要什么运行时"
+#: 由构建期决定并随 manifest 签名发布，而不是靠目标机器探测反推（探测会把
+#: "这台机器碰巧装了 torch"误当成"这个包支持 torch"）。
+_PROFILE = os.environ.get("QLH_BUILD_PROFILE", "").strip().lower() or "torch_cpu"
+
+sys.path.insert(0, SPECPATH)
+from runtime_guard import RUNTIME_PROFILES, profile_requirements_filename  # noqa: E402
+
+if _PROFILE not in RUNTIME_PROFILES:
+    raise SystemExit(
+        f"[qlh-slim.spec] 未知的 QLH_BUILD_PROFILE={_PROFILE!r}；"
+        f"可选：{sorted(RUNTIME_PROFILES)}"
+    )
 
 _RELEASE_ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 _ROOT = os.environ.get(
@@ -29,9 +45,9 @@ _PUBKEYS = os.path.join(SPECPATH, "pubkeys")
 _ICO = os.path.join(SPECPATH, "leds.ico")
 
 _RUNTIME_REQS = [
-    (os.path.join(SPECPATH, "requirements-runtime-llama_cpp_only.txt"), "packaging"),
-    (os.path.join(SPECPATH, "requirements-runtime-cpu.txt"), "packaging"),
-    (os.path.join(SPECPATH, "requirements-runtime-cuda.txt"), "packaging"),
+    # 只带**选定 profile** 的清单（见文件头 `_PROFILE`）；包内不存在其它 profile
+    # 的清单 ⇒ 运行时无法"顺手"按另一个 profile 装依赖。
+    (os.path.join(SPECPATH, profile_requirements_filename(_PROFILE)), "packaging"),
 ]
 
 if not os.path.isdir(_SRC_DIR):

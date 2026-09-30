@@ -25,6 +25,28 @@ RUNTIME_ENV_VAR = "QLH_RUNTIME_DIR"
 PYTORCH_CPU_INDEX = "https://download.pytorch.org/whl/cpu"
 RUNTIME_PROFILES: tuple[str, ...] = ("llama_cpp_only", "torch_cpu", "torch_cuda")
 
+#: profile → 包内 `requirements-runtime-*.txt` 文件名。**构建期**（`qlh-slim.spec`
+#: 只把选定 profile 的这份清单打进包）与**运行时**（引导器按包内清单装依赖）都
+#: 从这里取，避免"构建期打了一个 profile、引导器按另一个装"的静默错配。
+PROFILE_REQUIREMENTS_FILENAME: dict[str, str] = {
+    "llama_cpp_only": "requirements-runtime-llama_cpp_only.txt",
+    "torch_cpu": "requirements-runtime-cpu.txt",
+    "torch_cuda": "requirements-runtime-cuda.txt",
+}
+
+
+def profile_requirements_filename(profile: str) -> str:
+    """返回该 profile 对应的运行时 requirements 文件名（未知 profile 报错）。
+
+    未知值直接 `ValueError`：这里绝不回退到某个默认 profile —— 静默回退会把
+    "构建期选 llama_cpp_only"的包按 torch 装依赖，正是本契约要消除的错配。
+    """
+    normalized = str(profile or "").strip().lower()
+    if normalized not in PROFILE_REQUIREMENTS_FILENAME:
+        raise ValueError(f"unsupported runtime profile: {profile}")
+    return PROFILE_REQUIREMENTS_FILENAME[normalized]
+
+
 # 运行时必须可导入的模块（对瘦身包的主程序）。torch 系是核心，其余为主程序
 # 启动/推理路径确定会 import 的模块；缺失即触发 pip 引导。注意：这里是"启动必需
 # 最小集"，长尾依赖（einops/tiktoken/pandas 等）由 requirements-runtime 安装并

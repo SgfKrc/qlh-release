@@ -145,6 +145,28 @@ def test_ensure_runtime_installs_when_missing(monkeypatch, tmp_path):
     assert calls and "pip" in calls[0] and "install" in calls[0]
 
 
+def test_profile_requirements_filename_covers_every_profile():
+    names = [guard.profile_requirements_filename(p) for p in guard.RUNTIME_PROFILES]
+    # 每个 profile 一份清单，且互不相同 —— 否则"包内只带选定 profile"没有意义。
+    assert len(set(names)) == len(guard.RUNTIME_PROFILES)
+    for name in names:
+        assert name.startswith("requirements-runtime-") and name.endswith(".txt")
+
+
+def test_profile_requirements_files_exist_next_to_spec():
+    # 映射写错文件名会让构建期（qlh-slim.spec）在最后一步 SystemExit；这里锁住
+    # "映射指向真实存在的文件"，把该错误提前到测试里暴露。
+    packaging_dir = Path(guard.__file__).resolve().parent
+    for profile in guard.RUNTIME_PROFILES:
+        assert (packaging_dir / guard.profile_requirements_filename(profile)).is_file()
+
+
+def test_profile_requirements_filename_rejects_unknown_profile():
+    for bad in ("", "torch", "unknown-profile", "requirements-runtime-cpu.txt"):
+        with pytest.raises(ValueError):
+            guard.profile_requirements_filename(bad)
+
+
 def test_ensure_runtime_failed_when_install_unsatisfied(monkeypatch, tmp_path):
     python = tmp_path / "runtime" / "Scripts" / "python.exe"
     python.parent.mkdir(parents=True, exist_ok=True)

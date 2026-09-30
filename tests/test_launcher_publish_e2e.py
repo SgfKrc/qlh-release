@@ -38,6 +38,11 @@ _BUNDLE_MODULES = (
     "updater.py",
     "signing.py",
     "install_manifest.py",
+    # `install_manifest` 在构建期 profile 契约里从 `runtime_guard` 取
+    # `RUNTIME_PROFILES`（判据单一来源）⇒ bundle 必须一并带上，否则
+    # `qlh_launcher.py --health-check` 子进程 import 失败。真实发布的
+    # `qlh-launcher.spec` 由 PyInstaller 追踪 import 图，不受此清单影响。
+    "runtime_guard.py",
     "launcher_slots.py",
     "version_store.py",
 )
@@ -249,6 +254,35 @@ def test_publish_chain_a_b_slots_activate_health_and_rollback(publish_server, tm
     recovered = store.recover()
     # rollback 后 previous 指向 slot b/0.1.8.2（槽真实存在），recover 恢复它
     assert recovered is not None and recovered.version == "0.1.8.2"
+
+
+def test_bundle_modules_cover_every_local_import():
+    """★ bundle 清单必须覆盖被带模块的**同目录**顶层 import。
+
+    `_BUNDLE_MODULES` 是手工枚举的；漏一项（例如给 `install_manifest` 新增一个
+    同目录依赖）会让 `qlh_launcher.py --health-check` 子进程 import 失败，而症状
+    只是"健康检查不通过 / UPDATE_FAILED"，极难归因 —— 本轮就踩过一次
+    （漏 `runtime_guard.py`）。真实发布的 `qlh-launcher.spec` 由 PyInstaller 追踪
+    import 图，不受此清单影响。
+    """
+    import ast
+
+    bundled = {name[:-3] for name in _BUNDLE_MODULES}
+    local_modules = {path.stem for path in PACKAGING_DIR.glob("*.py")}
+    missing: set[str] = set()
+    for name in sorted(bundled):
+        tree = ast.parse((PACKAGING_DIR / f"{name}.py").read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                imported = [alias.name.split(".")[0] for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                imported = [(node.module or "").split(".")[0]]
+            else:
+                continue
+            for module in imported:
+                if module in local_modules and module not in bundled:
+                    missing.add(f"{name} -> {module}")
+    assert not missing, f"bundle 清单缺同目录依赖：{sorted(missing)}"
 
 
 def test_publish_chain_tampered_asset_fails_closed(publish_server, tmp_path):
