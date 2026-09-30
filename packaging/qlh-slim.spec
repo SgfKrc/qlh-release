@@ -1,17 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
 """QLH 瘦身安装包（SLIM）：不再把 PyTorch 系打进包体。
 
+★ 2026-09-30 产品基线整改：**产品以 TUI 为主**，包体**不再内置 ts 前端**
+（`frontend_cybergothic`）。此前本 spec 硬要求 `frontend_cybergothic/dist` 存在、
+否则直接 `SystemExit` —— 整改后该依赖连同 `QLH_SHELL_ROOT` 一并去掉，
+`qlh-shell` 仓不再是本包的构建前置。
+
 产物只含：
   - QLH-Edge-Inference.exe：轻量引导器（qlh_launcher.py，不 import 推理运行时）
   - _internal/src/            ：主程序源码（运行时由外部 venv python 以源码方式运行）
-  - _internal/frontend_cybergothic/dist/  ：CyberGothic 产品前端静态文件
   - _internal/packaging/      ：外部运行时依赖清单（llama_cpp_only/cpu/cuda）
   - _internal/pubkeys         ：验签公钥
 PyTorch / Transformers / llama.cpp / FastAPI / uvicorn 等全部从包体**排除**，
 由 qlh_launcher 每次启动用 runtime_guard 检查外部 runtime venv，缺失则
 pip 引导（CPU --index-url .../whl/cpu；CUDA 官方默认），再用该 venv python
 以 src 源码方式跑 uvicorn。体积从 ~734MB(CPU)/~1.7GB-13GB(CUDA) 降到几乎
-仅引导器 + 源码 + 前端（几十 MB），安装包更新不重装大 PyTorch。
+仅引导器 + 源码（几十 MB），安装包更新不重装大 PyTorch。
 """
 
 import os
@@ -21,10 +25,6 @@ _ROOT = os.environ.get(
     "QLH_CORE_ROOT", os.path.abspath(os.path.join(_RELEASE_ROOT, "..", "qlh"))
 )
 _SRC_DIR = os.path.join(_ROOT, "src")
-_SHELL_ROOT = os.environ.get(
-    "QLH_SHELL_ROOT", os.path.abspath(os.path.join(_RELEASE_ROOT, "..", "qlh-shell"))
-)
-_FRONTEND_DIST = os.path.join(_SHELL_ROOT, "frontend_cybergothic", "dist")
 _PUBKEYS = os.path.join(SPECPATH, "pubkeys")
 _ICO = os.path.join(SPECPATH, "leds.ico")
 
@@ -34,9 +34,10 @@ _RUNTIME_REQS = [
     (os.path.join(SPECPATH, "requirements-runtime-cuda.txt"), "packaging"),
 ]
 
-if not os.path.isdir(_FRONTEND_DIST):
+if not os.path.isdir(_SRC_DIR):
     raise SystemExit(
-        "[qlh-slim.spec] frontend_cybergothic/dist 不存在；请先构建前端（cd frontend_cybergothic && npm run build）"
+        f"[qlh-slim.spec] 主程序源码目录不存在：{_SRC_DIR}"
+        "（可用 QLH_CORE_ROOT 覆盖主仓根目录）"
     )
 
 a = Analysis(
@@ -46,7 +47,6 @@ a = Analysis(
         (_ICO, "."),
         (_PUBKEYS, "pubkeys"),
         (_SRC_DIR, "src"),
-        (_FRONTEND_DIST, "frontend_cybergothic/dist"),
     ] + _RUNTIME_REQS,
     hiddenimports=[
         "tkinter",
