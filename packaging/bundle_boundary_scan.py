@@ -136,12 +136,16 @@ def _lower_names(path_parts: Sequence[str]) -> list[str]:
 
 
 def _matches_module_name(lowered: str, module: str) -> bool:
-    """`torch` 命中 `torch/`、`torch-2.4.dist-info`、`torch.dll`，但不命中 `torchlike`。"""
+    """`torch` 命中 `torch/`、`torch-2.4.dist-info`、`torch.dll`，但不命中 `torchlike`。
+
+    ⚠️ **不**匹配 `torch_<something>.py`：那是我们自己的模块名（`src/torch_runtime.py`
+    检测 torch 可用性、`src/torch_hetero_plan.py` 之类），把它们当 torch 包报出来是
+    误报（实测 4 条）。原生库的 `torch_*.dll` 由 `NATIVE_EXTENSIONS` 分支单独判。
+    """
     return (
         lowered == module
         or lowered.startswith(module + ".")
         or lowered.startswith(module + "-")
-        or lowered.startswith(module + "_")
         or lowered == module + ".dll"
         or lowered == module + ".so"
     )

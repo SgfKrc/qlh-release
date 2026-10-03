@@ -45,6 +45,12 @@ class TestProfileGating:
             )
             assert hit is not None, name
 
+    def test_our_own_torch_helpers_are_not_the_torch_package(self):
+        # `src/torch_runtime.py` 是我们自己的模块（检测 torch 可用性），不是 torch 包。
+        for name in ("torch_runtime.py", "torch_hetero_plan.py", "torch_phase_plan.py"):
+            hit = scan.classify_path(Path("_internal/src") / name, "llama_cpp_only")
+            assert hit is None, name
+
     def test_dist_info_of_torch_is_hit(self):
         hit = scan.classify_path(
             Path("_internal/torch-2.12.0+cpu.dist-info/METADATA"), "llama_cpp_only",
