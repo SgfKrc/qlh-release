@@ -21,6 +21,8 @@ pip 引导（CPU --index-url .../whl/cpu；CUDA 官方默认），再用该 venv
 import os
 import sys
 
+from PyInstaller.building.datastruct import Tree
+
 #: ★ 构建期**显式选** runtime profile（`QLH_BUILD_PROFILE`）。默认 `torch_cpu`
 #: 保留旧行为。选定后包内**只带这一份**运行时依赖清单 —— "这个包需要什么运行时"
 #: 由构建期决定并随 manifest 签名发布，而不是靠目标机器探测反推（探测会把
@@ -50,6 +52,15 @@ _RUNTIME_REQS = [
     (os.path.join(SPECPATH, profile_requirements_filename(_PROFILE)), "packaging"),
 ]
 
+# Keep the source-backed slim runtime free of build residue.  The source files
+# themselves remain data because the launcher executes them from the external
+# runtime venv; only caches and local diagnostics are excluded.
+_SRC_TREE = Tree(
+    _SRC_DIR,
+    prefix="src",
+    excludes=["__pycache__", "*.pyc", "*.pyo", "*.log"],
+)
+
 if not os.path.isdir(_SRC_DIR):
     raise SystemExit(
         f"[qlh-slim.spec] 主程序源码目录不存在：{_SRC_DIR}"
@@ -62,7 +73,6 @@ a = Analysis(
     datas=[
         (_ICO, "."),
         (_PUBKEYS, "pubkeys"),
-        (_SRC_DIR, "src"),
     ] + _RUNTIME_REQS,
     hiddenimports=[
         "tkinter",
@@ -100,7 +110,7 @@ exe = EXE(
 coll = COLLECT(
     exe,
     a.binaries,
-    a.datas,
+    a.datas + _SRC_TREE,
     strip=False,
     upx=False,
     name="QLH-Edge-Inference",

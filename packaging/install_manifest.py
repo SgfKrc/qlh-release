@@ -493,6 +493,7 @@ def write_signed_install_manifest(
     includes: Sequence[IncludeSource] = (),
     generated_at: str | None = None,
     signed_at: str | None = None,
+    runtime_profile: str | None = None,
 ) -> Path:
     from signing import sign_manifest
 
@@ -505,6 +506,7 @@ def write_signed_install_manifest(
         package_kind=package_kind,
         includes=includes,
         generated_at=generated_at,
+        runtime_profile=runtime_profile,
     )
     signed = sign_manifest(
         unsigned, private_key_path=private_key_path, signed_at=signed_at,
@@ -821,6 +823,11 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--platform", required=True, choices=sorted(ALLOWED_PLATFORMS))
     build.add_argument("--variant", required=True)
     build.add_argument("--package-kind", required=True, choices=sorted(ALLOWED_PACKAGE_KINDS))
+    build.add_argument(
+        "--runtime-profile",
+        choices=sorted(RUNTIME_PROFILES),
+        help="runtime dependency profile recorded in the signed manifest",
+    )
     build.add_argument("--key", default=os.environ.get("QLH_SIGNING_KEY", ""))
     build.add_argument("--trusted-keys-dir")
     build.add_argument("--include", action="append", default=[], metavar="SOURCE=DESTINATION")
@@ -861,6 +868,7 @@ def main(argv: list[str] | None = None) -> int:
                 private_key_path=options.key,
                 trusted_keys_dir=trusted,
                 includes=[_parse_include(value) for value in options.include],
+                runtime_profile=options.runtime_profile,
             )
             mapping = load_install_manifest(path)
             print(json.dumps({

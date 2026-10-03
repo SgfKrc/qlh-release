@@ -272,12 +272,17 @@ def test_install_manifest_cli_build_and_validate(tmp_path, install_keyring, caps
         "--platform", "windows",
         "--variant", "cpu",
         "--package-kind", "application",
+        "--runtime-profile", "torch_cpu",
         "--key", str(install_keyring["release_key"]),
         "--trusted-keys-dir", str(install_keyring["pubkeys"]),
     ]) == 0
     output = json.loads(capsys.readouterr().out)
     assert output["file_count"] == 3
     assert output["key_id"] == "release-install"
+    manifest = install_manifest.load_install_manifest(
+        root / install_manifest.MANIFEST_RELATIVE_PATH
+    )
+    assert manifest["runtime_profile"] == "torch_cpu"
     assert install_manifest.main([
         "validate",
         "--manifest", str(root / install_manifest.MANIFEST_RELATIVE_PATH),

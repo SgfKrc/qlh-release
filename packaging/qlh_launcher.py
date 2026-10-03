@@ -194,6 +194,33 @@ def _requirements_path(root: Path, engine: str, profile: str | None = None) -> P
     return candidates[0]
 
 
+def bundled_runtime_profile(root: Path) -> str | None:
+    """Return the runtime profile this package was built with, or None.
+
+    The slim package ships exactly one `requirements-runtime-*.txt` — the one
+    for the profile `qlh-slim.spec` was told to build (`_RUNTIME_REQS`) — so
+    "which manifest is inside" *is* "which profile this package is".  None when
+    no manifest is present (source checkout, legacy package) or more than one is
+    (a broken package): the caller then falls back to the engine default.
+    """
+    from runtime_guard import PROFILE_REQUIREMENTS_FILENAME
+
+    for directory in (
+        Path(root).expanduser() / "_internal" / "packaging",
+        Path(root).expanduser() / "packaging",
+    ):
+        if not directory.is_dir():
+            continue
+        present = {
+            profile
+            for profile, filename in PROFILE_REQUIREMENTS_FILENAME.items()
+            if (directory / filename).is_file()
+        }
+        if present:
+            return present.pop() if len(present) == 1 else None
+    return None
+
+
 def _runtime_proxy() -> str:
     """运行时引导代理：QLH_RUNTIME_PROXY > QLH_HTTP_PROXY > 空。"""
     return (
@@ -212,10 +239,12 @@ def runtime_app_command(
     engine = (engine or os.environ.get("QLH_RUNTIME_ENGINE", "cpu")).strip().lower()
     if engine not in {"cpu", "cuda"}:
         engine = "cpu"
+    root = Path(root).expanduser()
     profile = (profile or os.environ.get("QLH_RUNTIME_PROFILE", "")).strip().lower() or None
     if profile is None:
+        profile = bundled_runtime_profile(root)
+    if profile is None:
         profile = "torch_cuda" if engine == "cuda" else "torch_cpu"
-    root = Path(root).expanduser()
     requirements = _requirements_path(root, engine, profile)
     ctx = RuntimeContext(
         root=root, engine=engine, profile=profile,
@@ -243,6 +272,8 @@ def _runtime_check_main(args: Any) -> int:
         engine = "cpu"
     profile = (getattr(args, "runtime_profile", None)
                or os.environ.get("QLH_RUNTIME_PROFILE", "")).strip().lower() or None
+    if profile is None:
+        profile = bundled_runtime_profile(root)
     if profile is None:
         profile = "torch_cuda" if engine == "cuda" else "torch_cpu"
     requirements = _requirements_path(root, engine, profile)
@@ -1142,10 +1173,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    # Forward explicit runtime selection to the slim app path.  The launcher
-    # itself remains dependency-free; only the child runtime consumes it.
-    if args.runtime_profile:
-        os.environ["QLH_RUNTIME_PROFILE"] = args.runtime_profile
+    # Forward the runtime selection to the slim app path: the child process — and
+    # the cluster presence payload it later reports — inherit it.  An explicit
+    # flag wins; otherwise the profile the package was built with is used, so a
+    # shipped Windows SLIM advertises `llama_cpp_only` without the installer
+    # having to pass anything.  The launcher itself stays dependency-free.
+    runtime_profile = args.runtime_profile
+    if not runtime_profile and not os.environ.get("QLH_RUNTIME_PROFILE", "").strip():
+        runtime_profile = bundled_runtime_profile(
+            installed_app_root(args.variant) or Path.cwd()
+        )
+    if runtime_profile:
+        os.environ["QLH_RUNTIME_PROFILE"] = runtime_profile
     if args.runtime_engine:
         os.environ["QLH_RUNTIME_ENGINE"] = args.runtime_engine
     if args.health_check:

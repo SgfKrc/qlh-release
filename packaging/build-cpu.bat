@@ -129,6 +129,7 @@ if exist "dist\QLH-Edge-Inference\QLH-Edge-Inference.exe" (
         --platform windows ^
         --variant cpu ^
         --package-kind application ^
+        --runtime-profile torch_cpu ^
         --key "!QLH_SIGNING_KEY!" ^
         --trusted-keys-dir "packaging\pubkeys"
     if errorlevel 1 exit /b 1

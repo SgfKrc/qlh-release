@@ -137,6 +137,7 @@ if exist "dist\QLH-Edge-Inference-CUDA\QLH-Edge-Inference.exe" (
         --platform windows ^
         --variant cuda ^
         --package-kind application ^
+        --runtime-profile torch_cuda ^
         --key "!QLH_SIGNING_KEY!" ^
         --trusted-keys-dir "packaging\pubkeys"
     if errorlevel 1 exit /b 1
