@@ -66,9 +66,11 @@ echo.
 echo [3/5] 跳过产品前端（已停止维护，界面以 TUI 为准）
 
 REM ---- 创建必要的目录 ----
+REM ★ 2026-10-03：删除原先「创建 `models/qwen-1_8b-chat/`」那一步 —— Qwen-1.8B 已退役，
+REM   而且那一行指向**主仓的 models/**，构建时往用户的模型目录里掺一个废弃模型的空壳
+REM   （实测被用户看到）。模型目录由 `launcher.py` 在运行时按需建，且只建 `models/` 本身。
 echo.
 echo [4/5] 准备打包目录...
-if not exist "%QLH_CORE_ROOT%\models\qwen-1_8b-chat" mkdir "%QLH_CORE_ROOT%\models\qwen-1_8b-chat"
 if not exist "logs" mkdir "logs"
 
 REM ---- PyInstaller 打包 ----

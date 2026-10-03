@@ -1616,13 +1616,14 @@ def main():
     # ★ 2026-10-03：先确保 `models/` 存在。`config._APP_ROOT` 在打包形态下是
     #   **exe 所在目录**（`config.py` 的注释即"models/ 与 exe 同级"），而
     #   `model_downloader.gguf_model_exists()` 第一步就 `os.path.isdir(GGUF_DIR)` ——
-    #   目录不存在时直接 False ⇒ **任何**模型都被判"未落盘"，用户把模型放进去也找不到
-    #   （实测：包体里从来没有这个目录）。这里创建它并把绝对路径打给用户。
+    #   目录不存在时直接 False ⇒ **任何**模型都被判"未落盘"，用户把模型放进去也找不到。
+    #   只建 `models/` 本身：**不再**建 `models/qwen-1_8b-chat/` 之类的模型子目录 ——
+    #   那是 Qwen-1.8B 时代的遗留，该模型已退役，建出来只会往用户的模型目录里掺空壳。
     models_dir = os.path.join(
         os.path.dirname(os.path.abspath(sys.executable)), "models",
     )
     try:
-        os.makedirs(os.path.join(models_dir, "qwen-1_8b-chat"), exist_ok=True)
+        os.makedirs(models_dir, exist_ok=True)
     except OSError:
         logger.debug("创建模型目录失败：%s", models_dir, exc_info=True)
 

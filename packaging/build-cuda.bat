@@ -71,8 +71,9 @@ echo   前端构建完成。
 echo.
 
 REM ---- 创建必要的目录 ----
+REM ★ 2026-10-03：与 `build-cpu.bat` 同步 —— 删掉往主仓 `models/` 建 `qwen-1_8b-chat/`
+REM   的那一行：Qwen-1.8B 已退役，构建不该往用户的模型目录里掺废弃模型的空壳。
 echo [4/5] 准备打包目录...
-if not exist "%QLH_CORE_ROOT%\models\qwen-1_8b-chat" mkdir "%QLH_CORE_ROOT%\models\qwen-1_8b-chat"
 if not exist "logs" mkdir "logs"
 echo   目录就绪。
 echo.
