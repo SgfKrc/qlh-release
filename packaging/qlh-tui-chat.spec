@@ -16,11 +16,16 @@ _SRC_DIR = os.path.join(_PROJECT_ROOT, "src")
 
 # Textual 在 App.get_driver_class 中按平台动态导入驱动；只显式带上运行时
 # 可能走到的驱动，避免 collect_submodules 把开发机的可选调试/图形栈一并带入。
+# ★ 2026-10-03：入口从 `tui_chat` 改为 `tui_textual` —— commit `656935e6`
+#   「归档旧标准库 TUI，单命令面抽出只读薄层 tui_commands」之后 `src/tui_chat.py`
+#   已不存在（`tui_textual.py` 才是带 `main()`/`__main__` 的 Textual 壳）。
 _HIDDEN_IMPORTS = [
     "httpx",
-    "tui_chat",
+    "tui_textual",
     "tui_sse",
     "tui_shared",
+    "tui_commands",
+    "tui_api",
     "textual.drivers.windows_driver",
     "textual.drivers.linux_driver",
     "textual.drivers.headless_driver",
@@ -30,7 +35,7 @@ _HIDDEN_IMPORTS = [
 ]
 
 a = Analysis(
-    [os.path.join(_SRC_DIR, "tui_chat.py")],
+    [os.path.join(_SRC_DIR, "tui_textual.py")],
     pathex=[_SRC_DIR],
     binaries=[],
     datas=[],
