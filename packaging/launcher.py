@@ -1529,9 +1529,13 @@ def main():
         return
     if headless or check_only:
         launch_mode = "headless"
+    # ★ 2026-10-03：**不再显示启动页**。TUI 自带启动动画（Textual 的启动屏），
+    #   外层那个 GDI splash 是多余的，而且它还带一个「普通界面」按钮 —— 那条路加载的
+    #   ts 前端已停止维护、包体里没有页面（点进去是空窗）。这里直接禁用 splash，
+    #   只保留 `update()` 的调用点（它们是 no-op）。
     startup_splash = _StartupSplash(
-        enabled=not headless and not check_only,
-        select_mode=launch_mode == "launcher",
+        enabled=False,
+        select_mode=False,
     ).start()
     import atexit
     atexit.register(startup_splash.close)
@@ -1609,6 +1613,19 @@ def main():
     print()
 
     # ---- 第 1 步：检查模型文件 ----
+    # ★ 2026-10-03：先确保 `models/` 存在。`config._APP_ROOT` 在打包形态下是
+    #   **exe 所在目录**（`config.py` 的注释即"models/ 与 exe 同级"），而
+    #   `model_downloader.gguf_model_exists()` 第一步就 `os.path.isdir(GGUF_DIR)` ——
+    #   目录不存在时直接 False ⇒ **任何**模型都被判"未落盘"，用户把模型放进去也找不到
+    #   （实测：包体里从来没有这个目录）。这里创建它并把绝对路径打给用户。
+    models_dir = os.path.join(
+        os.path.dirname(os.path.abspath(sys.executable)), "models",
+    )
+    try:
+        os.makedirs(os.path.join(models_dir, "qwen-1_8b-chat"), exist_ok=True)
+    except OSError:
+        logger.debug("创建模型目录失败：%s", models_dir, exc_info=True)
+
     startup_splash.update(42, "正在检查本地模型...")
     from model_downloader import (
         gguf_model_exists,
@@ -1622,7 +1639,7 @@ def main():
         sys.exit(1)
     if not model_ready:
         logger.warning("No local model is installed; continuing to the model download workspace")
-        print("No local model is installed; the application will open the model download workspace.")
+        print(f"No local model is installed. Put a .gguf file under: {models_dir}")
     if False:  # legacy blocking-model branch retained below for source compatibility
         logger.warning("No local model is installed; continuing to the model download workspace")
         print()
