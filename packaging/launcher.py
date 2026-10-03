@@ -1284,9 +1284,76 @@ def _run_pywebview(url: str, title: str,
         _launch_browser(url)
 
 
+def _configure_console_appearance() -> None:
+    """把 `AllocConsole()` 新建的控制台调成与 Windows Terminal 接近的外观。
+
+    `AllocConsole()` 给的是**经典 conhost**：默认点阵字体、16 色配色，**且不解析 ANSI
+    转义序列**。Textual 整个界面都靠 VT/ANSI 序列绘制 ⇒ 不启用 VT 就会看到颜色错乱、
+    框线与色块画不出来；默认点阵字体也画不清那些方块字符。实测：双击 exe 起的 TUI
+    与在 Windows Terminal 里跑的同一个 TUI，外观明显不同，根源就是这三项。
+
+    全部失败都不致命（拿不到控制台句柄时静默跳过）—— TUI 仍能跑，只是外观退化。
+    """
+    if not IS_WINDOWS:
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        STD_OUTPUT_HANDLE = -11
+        ENABLE_PROCESSED_OUTPUT = 0x0001
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+        handle = kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
+
+        # ① 启用 VT 处理 —— Textual 的 ANSI 序列靠它生效（最关键的一项）
+        mode = wintypes.DWORD()
+        if handle and kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            kernel32.SetConsoleMode(
+                handle,
+                mode.value | ENABLE_PROCESSED_OUTPUT
+                | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+            )
+
+        # ② 输入输出都用 UTF-8（界面里有 CJK 与制表符）
+        kernel32.SetConsoleOutputCP(65001)
+        kernel32.SetConsoleCP(65001)
+
+        # ③ 字体换等宽 Consolas（默认点阵字体画不清框线与块元素）
+        class _COORD(ctypes.Structure):
+            _fields_ = [("X", ctypes.c_short), ("Y", ctypes.c_short)]
+
+        class _CONSOLE_FONT_INFOEX(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.ULONG),
+                ("nFont", wintypes.DWORD),
+                ("dwFontSize", _COORD),
+                ("FontFamily", wintypes.UINT),
+                ("FontWeight", wintypes.UINT),
+                ("FaceName", wintypes.WCHAR * 32),
+            ]
+
+        info = _CONSOLE_FONT_INFOEX()
+        info.cbSize = ctypes.sizeof(_CONSOLE_FONT_INFOEX)
+        info.dwFontSize = _COORD(0, 18)
+        info.FontFamily = 54          # FF_MODERN | FIXED_PITCH
+        info.FontWeight = 400
+        info.FaceName = "Consolas"
+        kernel32.SetCurrentConsoleFontEx(
+            handle, False, ctypes.byref(info),
+        )
+    except Exception:  # noqa: BLE001 - 外观优化失败不该阻断 TUI
+        logger.debug("控制台外观设置失败（不影响 TUI 运行）", exc_info=True)
+
+
 def _ensure_tui_console() -> bool:
     """Attach a console for a windowed Windows build before entering TUI."""
     if _has_interactive_stdin():
+        # ★ 2026-10-03：命中这条说明控制台**已经存在**（`console=True` 的 exe 自带，
+        #   或用户从终端启动）。外观仍要调 —— 自带的是经典 conhost，默认不解析 ANSI
+        #   转义 ⇒ Textual 的颜色与框线会花掉（实测）。从 Windows Terminal 启动时
+        #   这几项已是启用状态，重复设置无副作用。
+        _configure_console_appearance()
         return True
     if not IS_WINDOWS or not getattr(sys, "frozen", False):
         return False
@@ -1303,6 +1370,8 @@ def _ensure_tui_console() -> bool:
             "CONOUT$", "w", encoding="utf-8", errors="replace", buffering=1,
         )
         ctypes.windll.kernel32.SetConsoleTitleW("QLH · BJTU TUI 管理")
+        # ★ 新建的 conhost 默认不解析 ANSI、字体是点阵 ⇒ 不调这个 TUI 颜色/框线全乱。
+        _configure_console_appearance()
         return True
     except Exception:
         logger.exception("无法为 TUI 创建控制台")
