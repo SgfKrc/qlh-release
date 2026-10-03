@@ -77,9 +77,17 @@ echo [5/5] PyInstaller 打包...
 echo   这可能需要 5-15 分钟，请耐心等待...
 "%PYTHON%" -m pip install pyinstaller --quiet
 REM ★ 从项目根目录运行，输出到 dist/QLH-Edge-Inference/
-REM ★ profile 化打包：包内只带 `!QLH_BUILD_PROFILE!` 那一份运行时清单（spec 读
-REM   `QLH_BUILD_PROFILE`，launcher 启动时从"包内是哪份清单"反查 profile）。
-"%PYTHON%" -m PyInstaller packaging\qlh-slim.spec --noconfirm
+REM ★ profile 化打包：
+REM   `llama_cpp_only`（边缘档）⇒ `qlh-edge.spec`：**冻结主引擎**但不含 PyTorch
+REM   （边缘推理走 llama.cpp/GGUF）。其余 profile ⇒ `qlh-slim.spec`：只带引导器，
+REM   推理依赖由外部 runtime venv 提供。
+REM   两者的区别是"主引擎在不在包里"，不是"启动器长什么样" —— 两个 spec 的入口
+REM   都是 `launcher.py`（它 `from api_server import run_api_servers`，即产品主程序）。
+if /i "!QLH_BUILD_PROFILE!"=="llama_cpp_only" (
+    "%PYTHON%" -m PyInstaller packaging\qlh-edge.spec --noconfirm
+) else (
+    "%PYTHON%" -m PyInstaller packaging\qlh-slim.spec --noconfirm
+)
 if errorlevel 1 exit /b 1
 
 REM T9.6: build the companion console before signing the application tree.

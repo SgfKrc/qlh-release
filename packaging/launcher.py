@@ -291,6 +291,14 @@ class _StartupSplash:
                 ctypes.c_void_p,
             ]
             user32.CreateWindowExW.restype = wintypes.HWND
+            # ★ 2026-10-03：GDI 调用的参数是 **DC 句柄**，64 位下是 64 位值；ctypes 默认
+            #   按 `c_int`（32 位）传 ⇒ 每次收到 `WM_CTLCOLOR*` 都抛
+            #   `ctypes.ArgumentError: argument 1: OverflowError: int too long to convert`
+            #   （实测把日志刷了十几行）。显式声明句柄与颜色类型。
+            gdi32.SetBkMode.argtypes = [wintypes.HDC, ctypes.c_int]
+            gdi32.SetBkMode.restype = ctypes.c_int
+            gdi32.SetTextColor.argtypes = [wintypes.HDC, wintypes.COLORREF]
+            gdi32.SetTextColor.restype = wintypes.COLORREF
             user32.DefWindowProcW.argtypes = [
                 wintypes.HWND,
                 wintypes.UINT,
@@ -1138,6 +1146,21 @@ def _check_tailscale_requirement(owner_hwnd=None) -> bool:
     return _prompt_tailscale_setup(status)
 
 
+def _torch_available() -> bool:
+    """PyTorch 是否**装得上**（不导入它，避免拖起整棵依赖树）。
+
+    与 `_detect_cuda()` 的区别：那个回答"有 GPU 吗"，这个回答"有 PyTorch 吗"。
+    边缘档（`qlh-edge.spec`）无 torch 但可能有别的加速器；而 CPU 档可能有 torch
+    却没 GPU —— 决定"能不能导入 `model_module`"的是后者。
+    """
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec("torch") is not None
+    except (ImportError, ValueError):
+        return False
+
+
 def _detect_cuda() -> bool:
     """静默检测 CUDA 可用性。"""
     try:
@@ -1300,7 +1323,11 @@ def _run_tui(
             buttons="ok",
         )
         return 1
-    from tui_admin import main as tui_main
+    # ★ 2026-10-03：入口从 `tui_admin` 改为 `tui_textual` —— commit `656935e6`
+    #   「归档旧标准库 TUI」之后 `src/tui_admin.py` 已不存在，`tui_textual.py` 才是
+    #   带 `main()`/`__main__` 的 Textual 管理界面（也是 `doc-style.md` 引为 TUI
+    #   页面/命令数事实源的那份）。
+    from tui_textual import main as tui_main
 
     print("QLH 服务已就绪，正在进入 BJTU TUI 管理界面……")
     return int(tui_main(["--port", str(api_port)]) or 0)
@@ -1439,11 +1466,13 @@ def main():
     ).start()
     import atexit
     atexit.register(startup_splash.close)
+    # ★ 2026-10-03：**不再提供「普通窗口」入口**。那个窗口加载的是
+    #   `frontend_cybergothic`（ts 前端），而它已停止维护、包体里也没有页面 ——
+    #   实测点进去就是空窗（后端日志只有 `GET / 404`）。产品界面以 **TUI** 为准
+    #   （`qlh-slim.spec` 的文件头 2026-09-30 起即已声明）。这里直接进 TUI，
+    #   不再弹模式选择（弹了也只能选到一条死路）。
     if launch_mode == "launcher":
-        launch_mode = startup_splash.choose_mode(default="ui")
-        if launch_mode is None:
-            startup_splash.close()
-            return
+        launch_mode = "tui"
     startup_splash.update(5, "正在初始化运行环境...")
     from config import API_PORT
 
@@ -1551,8 +1580,19 @@ def main():
 
     # ---- 确认引擎选择 ----
     startup_splash.update(58, "正在准备模型运行环境...")
-    from model_module import ModelManager
-    actual_engine = ModelManager.select_engine()
+    # ★ 2026-10-03：`model_module` 是 **PyTorch 引擎**模块 —— 它顶层无条件
+    #   `import torch` / `import transformers`。边缘档（`qlh-edge.spec`）**刻意不打
+    #   torch**（推理走 llama.cpp/GGUF）⇒ 这里不能无条件导入它，否则 launcher 在
+    #   导入期就 `ModuleNotFoundError: No module named 'torch'` 直接崩（实测）。
+    #   判据用「torch 是否装得上」而不是「CUDA 是否可用」：边缘档无 torch，
+    #   CPU 档可能装了 torch 但没有 GPU —— 前者必须跳过导入，后者仍需 ModelManager。
+    if _torch_available():
+        from model_module import ModelManager
+
+        actual_engine = ModelManager.select_engine()
+    else:
+        actual_engine = "llama_cpp"
+        logger.info("未检测到 PyTorch（边缘档），推理引擎固定为 llama_cpp（GGUF）")
     logger.info(f"推理引擎: {actual_engine}")
 
     if check_only:
@@ -1614,7 +1654,13 @@ def main():
             )
             sys.exit(1)
         try:
-            resp = urllib.request.urlopen(f"http://localhost:{API_PORT}", timeout=0.5)
+            # ★ 2026-10-03：探测 `/api/health` 而不是 `/` —— 后者是那个已停止维护的
+            #   ts 前端入口，包体里没有页面 ⇒ 每次启动都会在日志里留一条 `GET / 404`
+            #   （看起来像故障，其实只是探测打错了目标）。health 端点才是"服务就绪"的
+            #   真实判据。
+            resp = urllib.request.urlopen(
+                f"http://localhost:{API_PORT}/api/health", timeout=0.5,
+            )
             if resp.status < 500:
                 server_ready = True
                 break
