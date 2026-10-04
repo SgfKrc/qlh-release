@@ -6,8 +6,12 @@ echo  QLH 边缘推理系统 — 集显版打包脚本
 echo ============================================
 echo.
 cd /d "%~dp0\.."
-if not defined QLH_CORE_ROOT set "QLH_CORE_ROOT=%~dp0..\..\qlh"
-if not defined QLH_SHELL_ROOT set "QLH_SHELL_ROOT=%~dp0..\..\qlh-shell"
+REM ★ 2026-10-04：`packaging` 现在作为**主仓子模块**挂载在 `<core>\packaging`，
+REM   外部兄弟目录（`qlh-release` / `qlh-shell` / `qlh-android`）已不再保留 ⇒
+REM   这里的默认值指向主仓根，以及主仓下的产品壳子模块。旧布局请显式设这两个
+REM   变量（脚本只补默认值，不覆盖已定义的值）。
+if not defined QLH_CORE_ROOT set "QLH_CORE_ROOT=%~dp0..\.."
+if not defined QLH_SHELL_ROOT set "QLH_SHELL_ROOT=%~dp0..\..\frontend_cybergothic"
 
 REM ---- 选择 runtime profile ----
 REM ★ 2026-10-03：集显版改为**profile 化的 slim 打包**（`qlh-slim.spec`）。原

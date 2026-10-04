@@ -73,10 +73,12 @@ def resolve_dist(explicit: str | None) -> Path:
             return candidate
         raise FileNotFoundError(f"QLH_CG_DIST 无效: {candidate}")
     for candidate in (
-        # 1) 开发形态：独立 qlh-shell 仓库
+        # 1) 开发形态：壳仓根（`QLH_SHELL_ROOT` 的语义，见
+        #    `repo_paths.shell_root()`）—— 子模块布局下即 `<core>/frontend_cybergothic`，
+        #    旧的外部兄弟布局才是 `<workspace>/qlh-shell`。
         Path(os.environ.get(
             "QLH_SHELL_ROOT",
-            str(Path(__file__).resolve().parents[2] / "qlh-shell"),
+            str(Path(__file__).resolve().parents[2] / "frontend_cybergothic"),
         )) / "frontend_cybergothic" / "dist",
         # 2) 打包形态：_internal/frontend_cybergothic/dist（datas 收集目标）
         Path(__file__).resolve().parent / "frontend_cybergothic" / "dist",
