@@ -1510,6 +1510,28 @@ def _verify_pytorch_tokenizer_runtime() -> str:
     return tokenizer_name
 
 
+def _run_keephead_worker(argv: list[str]) -> int:
+    """把包内的 ``llama_keep_head_worker.py`` 当作 ``__main__`` 执行。
+
+    仅对**冻结包**有意义：此时 ``sys.executable`` 是本 exe 自己、不是 Python 解释器，
+    ``llama_keep_head._init_isolated_worker()`` 不能再写
+    ``[sys.executable, worker.py, ...]`` —— 那只会让本 exe 重跑 launcher 入口，
+    worker 的 stdin/stdout 协议永不建立。2026-10-06 用 Edge 包当 layer worker 实测踩到：
+    子进程在（37MB）、``keephead-worker.log`` 为 0 字节、master 等满 60s 超时。
+    这里早期分派，把同一份 worker 脚本直接跑起来（包内已含它所需的全部模块）。
+    """
+    import runpy
+
+    worker = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "llama_keep_head_worker.py")
+    if not os.path.isfile(worker):
+        print(f"[keephead-worker] missing: {worker}", file=sys.stderr)
+        return 2
+    sys.argv = [worker, *argv]
+    runpy.run_path(worker, run_name="__main__")
+    return 0
+
+
 def main():
     """启动器主入口（跨平台）。
 
@@ -1519,7 +1541,13 @@ def main():
       --tui         启动后端后进入终端管理界面
       --headless    跳过浏览器/窗口，仅后台运行 API 服务器（适合 systemd / 无头部署）
       --check-only  仅检查环境，打印状态后退出（CI/测试用）
+      --keephead-worker  内部使用：以 __main__ 跑包内的 keep-head 隔离 worker
     """
+    # ★ keep-head 隔离 worker 的早期分派（细节见 _run_keephead_worker）
+    if "--keephead-worker" in sys.argv:
+        _idx = sys.argv.index("--keephead-worker")
+        return _run_keephead_worker(sys.argv[_idx + 1:])
+
     headless = "--headless" in sys.argv
     check_only = "--check-only" in sys.argv
     try:
