@@ -35,9 +35,24 @@ def test_slim_src_root_recognized(tmp_path):
     assert ql._slim_src_root(tree) == tree / "_internal"
 
 
-def test_slim_src_root_not_when_packaged_exe(tmp_path):
+def test_slim_src_root_recognized_with_onedir_exe(tmp_path):
+    """onedir 产物的根目录带着引导器 exe，但这不该让它被误判成完整包。
+
+    2026-10-06 设备侧实测：dist 形态的瘦身包因旧判据（要求根目录没有 exe）
+    走错分支，在包内同进程 import api_server
+    ⇒ `ModuleNotFoundError: No module named 'fastapi'`。
+    """
     tree = _slim_tree(tmp_path)
     (tree / "QLH-Edge-Inference.exe").write_text("x")
+    assert ql._slim_src_root(tree) == tree / "_internal"
+
+
+def test_slim_src_root_none_when_fastapi_bundled(tmp_path):
+    """包内自带 fastapi ⇒ 完整包，不应走「外部运行时跑源码」这条分支。"""
+    tree = _slim_tree(tmp_path)
+    fastapi_dir = tree / "_internal" / "fastapi"
+    fastapi_dir.mkdir(parents=True, exist_ok=True)
+    (fastapi_dir / "__init__.py").write_text("", encoding="utf-8")
     assert ql._slim_src_root(tree) is None
 
 

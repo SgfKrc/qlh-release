@@ -158,8 +158,13 @@ def diagnosis_app_root(preferred_variant: str | None = None) -> Path | None:
 
 
 def _slim_src_root(root: Path) -> Path | None:
-    """瘦身安装包识别：``_internal/src/api_server.py`` 存在（src 由 datas 收进
-    ``_internal/`` 且无打包 exe 主程序）→ 返回 ``_internal`` 作为 uvicorn 的 cwd。
+    """瘦身安装包识别：``_internal/src/api_server.py`` 存在、且**包内未捆绑服务依赖**
+    （``fastapi`` 被 spec 的 ``excludes`` 排除）→ 返回 ``_internal`` 作为 uvicorn 的 cwd。
+
+    判据用「**包内有没有捆绑 fastapi**」，而不是「根目录有没有 ``QLH-Edge-Inference.exe``」：
+    PyInstaller onedir 产物的根目录**本来就带着这个引导器 exe**，拿它当判据会把
+    dist 形态的瘦身包误判成完整包 ⇒ 走包内同进程 import ⇒ 撞上被排除的 fastapi
+    ⇒ `ModuleNotFoundError: No module named 'fastapi'`（2026-10-06 设备侧实测踩到）。
 
     瘦身包形态仅 **Windows Inno 安装**；Linux deb 已用包内 venv 运行时形态，
     不适用本分支。非 nt 直接返回 None —— 也避免 Python 3.12 下 ``Path``
@@ -167,11 +172,12 @@ def _slim_src_root(root: Path) -> Path | None:
     if os.name != "nt":
         return None
     internal = Path(root).expanduser() / "_internal"
-    if (internal / "src" / "api_server.py").is_file() and not (
-        Path(root).expanduser() / "QLH-Edge-Inference.exe"
-    ).is_file():
-        return internal
-    return None
+    if not (internal / "src" / "api_server.py").is_file():
+        return None
+    # 包内自带 fastapi ⇒ 完整包，可以在包内同进程起服务
+    if (internal / "fastapi" / "__init__.py").is_file():
+        return None
+    return internal
 
 
 def _requirements_path(root: Path, engine: str, profile: str | None = None) -> Path:
