@@ -1545,6 +1545,15 @@ def main():
     """
     # ★ keep-head 隔离 worker 的早期分派（细节见 _run_keephead_worker）
     if "--keephead-worker" in sys.argv:
+        # ⚠️ 模块级（本文件顶部）已把 sys.stdout / sys.stderr 重定向到 logs/ 下的
+        #    `stdout_*.log` / `stderr_*.log` —— 那是给 GUI/TUI 模式用的。但 worker 的
+        #    **协议通道正是 stdout**（worker 端 `print(json.dumps(...), flush=True)`，
+        #    父进程 `process.stdout.readline()`）。不还原的话响应会写进日志文件，
+        #    父进程永远读不到 ⇒ 层段 Stage 等满 60s 超时。
+        #    （2026-10-06 用 Edge 包当 layer worker 实测踩到：keephead-worker.log 显示
+        #     `ctx ready` 正常，但 master 侧 `remote Stage response timed out`。）
+        sys.stdout = sys.__stdout__
+        sys.stderr = sys.__stderr__
         _idx = sys.argv.index("--keephead-worker")
         return _run_keephead_worker(sys.argv[_idx + 1:])
 
