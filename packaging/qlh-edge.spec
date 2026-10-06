@@ -83,6 +83,18 @@ if _lq_ok:
 else:
     print("[spec] 跳过 llama-quantize（未通过受管包校验）")
 
+# ★ 层段 keep-head 的隔离 worker 是**子进程脚本**，不是 import：
+#   `llama_keep_head.py:298` 用 `Path(__file__).with_name("llama_keep_head_worker.py")`
+#   配合 `sys.executable` 起它 ⇒ 它必须与 `llama_keep_head.py` **同目录**（这里被收到
+#   `_internal/` 根），且必须以 data 形式打进包。此前漏了它 ⇒ 层段 Stage 直接失败：
+#   `KeepHeadUnavailable: keep-head worker missing: ...\_internal\llama_keep_head_worker.py`
+#   （2026-10-06 用 Edge 包当 layer worker 入网时实测踩到）。
+_keep_head_worker = os.path.join(_SRC_DIR, "llama_keep_head_worker.py")
+if os.path.isfile(_keep_head_worker):
+    _datas.append((_keep_head_worker, "."))
+else:
+    print("[spec] 警告：未找到 llama_keep_head_worker.py，层段 Stage 将不可用")
+
 a = Analysis(
     ["launcher.py"],
     pathex=[_SRC_DIR, SPECPATH],
