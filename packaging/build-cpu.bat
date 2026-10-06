@@ -55,11 +55,17 @@ if /i "!QLH_BUILD_PROFILE!"=="llama_cpp_only" (
     REM 边缘包**不得**装 torch —— 装了就违背 profile 契约（slim spec 也不会收它，
     REM 但虚环境里留着会在后续 `--runtime-check` 与包体边界复验里造成误判）。
     echo   跳过 PyTorch（llama_cpp_only 档不装 torch）
+    REM ★ 2026-10-06：slim 档必须用 **profile 专属清单**。此前这一行无条件装
+    REM   `requirements-cpu.txt`（含 transformers / accelerate / huggingface_hub /
+    REM   bitsandbytes / pandas 等），它们的**传递依赖会把 torch 拽回来** ⇒
+    REM   PyInstaller 虽按 spec 的 excludes 剔掉 torch 本体，却收下了
+    REM   huggingface_hub / hf_xet 等 ⇒ 包体从 ~50MB 膨胀到 255MB。
+    "%PYTHON%" -m pip install -r packaging\requirements-runtime-llama_cpp_only.txt --quiet
 ) else (
     echo   提示: 如果已安装 CUDA 版 PyTorch，会被替换为 CPU 版
     "%PYTHON%" -m pip install torch --index-url https://download.pytorch.org/whl/cpu --quiet
+    "%PYTHON%" -m pip install -r packaging\requirements-cpu.txt --quiet
 )
-"%PYTHON%" -m pip install -r packaging\requirements-cpu.txt --quiet
 echo   依赖安装完成。
 
 REM ---- 前端：已停止维护 ----
