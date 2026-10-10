@@ -3,10 +3,19 @@
 
 import os
 
+_PROJECT_ROOT = os.environ.get(
+    "QLH_CORE_ROOT", os.path.abspath(os.path.join(SPECPATH, "..", ".."))
+)
+_RELEASE_CONTRACT = os.path.join(_PROJECT_ROOT, "release-contract.json")
+
 a = Analysis(
     [os.path.join(SPECPATH, "qlh_launcher.py")],
     pathex=[SPECPATH],
-    datas=[(os.path.join(SPECPATH, "leds.ico"), "."), (os.path.join(SPECPATH, "pubkeys"), "pubkeys")],
+    datas=[
+        (os.path.join(SPECPATH, "leds.ico"), "."),
+        (os.path.join(SPECPATH, "pubkeys"), "pubkeys"),
+        (_RELEASE_CONTRACT, "."),
+    ],
     hiddenimports=[
         "tkinter",
         "tkinter.ttk",

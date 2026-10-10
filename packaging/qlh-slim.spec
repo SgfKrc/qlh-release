@@ -43,6 +43,7 @@ _ROOT = os.environ.get(
     "QLH_CORE_ROOT", os.path.abspath(os.path.join(_RELEASE_ROOT, "..", "qlh"))
 )
 _SRC_DIR = os.path.join(_ROOT, "src")
+_RELEASE_CONTRACT = os.path.join(_ROOT, "release-contract.json")
 _PUBKEYS = os.path.join(SPECPATH, "pubkeys")
 _ICO = os.path.join(SPECPATH, "leds.ico")
 
@@ -73,6 +74,7 @@ a = Analysis(
     datas=[
         (_ICO, "."),
         (_PUBKEYS, "pubkeys"),
+        (_RELEASE_CONTRACT, "."),
     ] + _RUNTIME_REQS,
     hiddenimports=[
         "tkinter",

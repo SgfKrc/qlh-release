@@ -47,9 +47,12 @@ from updater import (
     main as updater_main,
 )
 from version_store import VersionStore
+from packaging_release_contract import (
+    LAUNCHER_VERSION,
+    ReleaseContractError,
+    build_release_child_environment,
+)
 
-
-LAUNCHER_VERSION = "0.1.8.2"
 
 
 def install_root() -> Path:
@@ -344,7 +347,11 @@ def launch_app(mode: str, variant_override: str | None = None) -> subprocess.Pop
     slim = _slim_src_root(root)
     # 瘦身包以 _internal 作为 cwd（uvicorn 需可 import src.api_server）
     cwd = str(slim) if slim is not None else str(root)
-    return subprocess.Popen(command, cwd=cwd)
+    try:
+        environment = build_release_child_environment(root)
+    except ReleaseContractError as exc:
+        raise OSError(f"发行合同无效，拒绝启动主程序: {exc}") from exc
+    return subprocess.Popen(command, cwd=cwd, env=environment)
 
 
 def _delegate_to_active_launcher(argv: list[str]) -> int | None:

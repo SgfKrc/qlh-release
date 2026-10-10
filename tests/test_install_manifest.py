@@ -458,7 +458,8 @@ def test_release_build_entrypoints_require_and_package_signed_baseline():
     linux_postinst = (PACKAGING_DIR / "linux" / "postinst").read_text(encoding="utf-8")
     assert "QLH_SIGNING_KEY" in linux_build
     assert 'install_manifest.py" build' in linux_build
-    assert '"$MANIFEST_TOOL" validate' in linux_postinst
+    assert '"$MANIFEST_TOOL" verify' in linux_postinst
+    assert '--level deep' in linux_postinst
     assert 'manifest/install-manifest.json' in linux_postinst
 
     launcher_setup = (PACKAGING_DIR / "setup-launcher.iss").read_text(encoding="utf-8")
@@ -473,6 +474,14 @@ def test_release_build_entrypoints_require_and_package_signed_baseline():
         assert 'verify --root "' in setup
         assert "--level deep" in setup
         assert "validate --manifest" not in setup
+        postinstall = setup[setup.index("procedure CurStepChanged"):]
+        verify_index = postinstall.index('verify --root "')
+        reject_index = postinstall.index("if (not Verified) or (ResultCode <> 0) then")
+        raise_index = postinstall.index("RaiseException(", reject_index)
+        persist_index = postinstall.index("PersistInitialNodeRole;")
+        reassociate_index = postinstall.index("ReassociateRetainedData;")
+        assert verify_index < reject_index < raise_index < persist_index < reassociate_index
+        assert postinstall.count("PersistInitialNodeRole;") == 1
         assert 'Source: "..\\' not in setup
         assert 'Source: "version.txt"' not in setup
         assert 'Source: "scripts\\convert_to_gguf.py"' not in setup

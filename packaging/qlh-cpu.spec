@@ -32,6 +32,7 @@ _SHELL_ROOT = os.environ.get(
 
 # src 目录（Python 模块搜索路径）
 _SRC_DIR = os.path.join(_PROJECT_ROOT, "src")
+_RELEASE_CONTRACT = os.path.join(_PROJECT_ROOT, "release-contract.json")
 
 # 唯一产品前端 dist 目录
 _FRONTEND_DIST = os.path.join(_SHELL_ROOT, "frontend_cybergothic", "dist")
@@ -83,6 +84,7 @@ a = Analysis(
         # CyberGothic 产品前端静态文件 → 运行时目录 frontend_cybergothic/dist/
         (_FRONTEND_DIST, 'frontend_cybergothic/dist'),
         (_LLAMA_QUANTIZE_PACKAGE, 'model-tools/llama-quantize/windows-x86_64'),
+        (_RELEASE_CONTRACT, '.'),
     ],
     hiddenimports=[
         # ============================================================

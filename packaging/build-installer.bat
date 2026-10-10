@@ -36,6 +36,13 @@ if not defined ISCC (
 echo Inno Setup: %ISCC%
 echo.
 
+set "VERSION_FILE=%~dp0version.txt"
+if not exist "%VERSION_FILE%" (
+    echo [错误] 未找到版本镜像: %VERSION_FILE%
+    exit /b 1
+)
+set /p APP_VERSION=<"%VERSION_FILE%"
+
 REM ---- 检查 PyInstaller 输出 ----
 if not exist "..\dist\QLH-Edge-Inference\QLH-Edge-Inference.exe" (
     echo [错误] 未找到 PyInstaller 输出！
@@ -68,11 +75,11 @@ if errorlevel 1 (
 
 REM ---- 编译 Inno Setup ----
 echo 开始编译安装包...
-echo 输出: dist\QLH-Edge-Inference-Setup-v0.1.8.1.exe
+echo 输出: dist\QLH-Edge-Inference-Setup-v%APP_VERSION%.exe
 echo 这可能需要 2-5 分钟（压缩中）...
 echo.
 
-"%ISCC%" setup.iss
+"%ISCC%" /DMyAppVersion=%APP_VERSION% setup.iss
 
 if errorlevel 1 (
     echo.
@@ -86,7 +93,7 @@ if errorlevel 1 (
 echo.
 echo ============================================
 echo   编译成功！
-echo   安装包: dist\QLH-Edge-Inference-Setup-v0.1.8.1.exe
+echo   安装包: dist\QLH-Edge-Inference-Setup-v%APP_VERSION%.exe
 echo ============================================
 echo.
 echo 发给用户前，请先在本机测试安装流程！

@@ -34,9 +34,8 @@ from update_core import (
 from signing import default_trusted_keys_dir
 from launcher_slots import LauncherSlotError, LauncherSlotStore
 from version_store import VersionStore, VersionStoreError
+from packaging_release_contract import LAUNCHER_VERSION
 
-
-LAUNCHER_VERSION = "0.1.8.2"
 DEFAULT_UPDATE_SOURCES = (
     "http://100.90.76.108:9090/latest.json",
     "https://github.com/SgfKrc/LEDS_BJTU/releases/latest/download/latest.json",

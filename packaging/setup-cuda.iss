@@ -8,12 +8,15 @@
 ;   1. 已完成 PyInstaller 打包 → dist/QLH-Edge-Inference-CUDA/
 ;   2. 已安装 Inno Setup 6
 ;
-; 输出: dist/QLH-Edge-Inference-Setup-v0.1.8.2-CUDA.exe
+; 输出: dist/QLH-Edge-Inference-Setup-v{QlhProductVersion}-CUDA.exe
 ; ============================================================
 
+#include "release-versions.issinc"
 #define MyAppName         "QLH Edge Inference (CUDA)"
 #define MyAppNameCN       "轻量化大模型分布式边缘推理系统（独显版）"
-#define MyAppVersion      "0.1.8.3"
+#ifndef MyAppVersion
+  #define MyAppVersion QlhProductVersion
+#endif
 #define MyAppPublisher    "北京交通大学 · 大创项目"
 #define MyAppExeName      "QLH-Edge-Inference.exe"
 #define MyAppSourceDir    "..\dist\QLH-Edge-Inference-CUDA"
@@ -121,6 +124,7 @@ const
   QlhEnvPathOwnedValue = 'PathOwned';
 
 #include "env-registration.issinc"
+#include "node-role.issinc"
 
 function RunDataRetention(CommandName: String): Boolean;
 var
@@ -179,6 +183,12 @@ begin
     Result := False;
     exit;
   end;
+  if not QlhNodeRoleParameterIsValid then
+  begin
+    MsgBox('NODE_ROLE 只能为 master、client 或 auto。', mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
   if GetOldUninstallString(UninstPath) then
   begin
     if MsgBox(
@@ -220,6 +230,7 @@ begin
     );
     if (not Verified) or (ResultCode <> 0) then
       RaiseException('UP-N6.0 安装文件 deep 校验失败，安装已中止。');
+    PersistInitialNodeRole;
     ReassociateRetainedData;
     ConfigureRegisteredUserEnvironment;
     MsgBox(CustomMessage('InstallDoneMsg'), mbInformation, MB_OK);

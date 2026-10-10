@@ -37,6 +37,7 @@ _PROJECT_ROOT = os.environ.get(
     "QLH_CORE_ROOT", os.path.abspath(os.path.join(_RELEASE_ROOT, "..", "qlh"))
 )
 _SRC_DIR = os.path.join(_PROJECT_ROOT, "src")
+_RELEASE_CONTRACT = os.path.join(_PROJECT_ROOT, "release-contract.json")
 
 # 受管 llama-quantize（模型工具链）—— 可选：缺失时只跳过该工具，不阻断主引擎打包。
 sys.path.insert(0, _PROJECT_ROOT)
@@ -77,7 +78,7 @@ try:
 except Exception as _e:  # noqa: BLE001 - 打包期诊断
     print(f"[spec] WARNING: Failed to collect llama.cpp DLLs: {_e}")
 
-_datas = []
+_datas = [(_RELEASE_CONTRACT, ".")]
 if _lq_ok:
     _datas.append((_LLAMA_QUANTIZE_PACKAGE, "model-tools/llama-quantize/windows-x86_64"))
 else:

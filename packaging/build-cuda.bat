@@ -29,6 +29,11 @@ if errorlevel 1 (
     exit /b 1
 )
 "%PYTHON%" --version
+"%PYTHON%" "%QLH_CORE_ROOT%\scripts\version_contract.py" --check
+if errorlevel 1 (
+    echo   [错误] 发行版本镜像与 release-contract.json 不一致
+    exit /b 1
+)
 if not defined QLH_SIGNING_KEY (
     echo   [错误] 发布构建必须设置 QLH_SIGNING_KEY，禁止生成无签名安装清单。
     exit /b 1

@@ -39,6 +39,7 @@ _SHELL_ROOT = os.environ.get(
 
 # src 目录（Python 模块搜索路径）
 _SRC_DIR = os.path.join(_PROJECT_ROOT, "src")
+_RELEASE_CONTRACT = os.path.join(_PROJECT_ROOT, "release-contract.json")
 
 # 唯一产品前端 dist 目录
 _FRONTEND_DIST = os.path.join(_SHELL_ROOT, "frontend_cybergothic", "dist")
@@ -139,6 +140,7 @@ a = Analysis(
         (_FRONTEND_DIST, 'frontend_cybergothic/dist'),
         (_LLAMA_QUANTIZE_PACKAGE, 'model-tools/llama-quantize/windows-x86_64'),
         (_GEMMA4_NATIVE_DIR, 'models/gemma4-native'),
+        (_RELEASE_CONTRACT, '.'),
         (os.path.join(_GEMMA4_SITE_PACKAGES, 'llama_cpp', _GEMMA4_BINDING_MARKER), 'llama_cpp'),
         (os.path.join(_PROJECT_ROOT, 'scripts', 'model_tools', 'gemma4_native_binding.lock.json'), 'scripts/model_tools'),
     ],

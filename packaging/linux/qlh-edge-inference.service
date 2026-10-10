@@ -6,11 +6,17 @@ Wants=network.target
 [Service]
 Type=simple
 DynamicUser=yes
+StateDirectory=qlh-edge-inference
+LogsDirectory=qlh-edge-inference
 ExecStart=/opt/qlh-edge-inference/venv/bin/python3 /opt/qlh-edge-inference/bin/qlh-launcher --headless
 WorkingDirectory=/opt/qlh-edge-inference
 Restart=on-failure
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
+Environment=QLH_STATE_DIR=/var/lib/qlh-edge-inference/state
+Environment=QLH_NODE_CONFIG_PATH=/var/lib/qlh-edge-inference/node_config.json
+Environment=QLH_RELEASE_CONTRACT_PATH=/opt/qlh-edge-inference/release-contract.json
+Environment=QLH_RELEASE_PROFILE_ENFORCE=1
 
 [Install]
 WantedBy=multi-user.target

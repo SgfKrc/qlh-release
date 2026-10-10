@@ -31,6 +31,7 @@ from typing import Any, Iterable
 from urllib.parse import quote, unquote, urlparse
 
 from repo_paths import android_root, core_root
+from packaging_release_contract import PRODUCT_VERSION
 
 HOST = os.environ.get("QLH_DISTRIBUTION_HOST", "::")
 DEFAULT_PORT = 9090
@@ -83,15 +84,12 @@ class Signer:
 def _project_version() -> str:
     override = os.environ.get("QLH_RELEASE_TAG", "").strip().lstrip("vV")
     if override:
-        return override
-    init_path = os.path.join(PROJECT_ROOT, "src", "__init__.py")
-    try:
-        with open(init_path, "r", encoding="utf-8") as handle:
-            content = handle.read()
-    except OSError:
-        return "0.0.0"
-    match = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', content, re.MULTILINE)
-    return match.group(1) if match else "0.0.0"
+        if override != PRODUCT_VERSION:
+            raise ValueError(
+                f"QLH_RELEASE_TAG={override!r} does not match canonical "
+                f"product version {PRODUCT_VERSION!r}"
+            )
+    return PRODUCT_VERSION
 
 
 def _sha256_cached(path: str) -> str:

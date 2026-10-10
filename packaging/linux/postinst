@@ -15,8 +15,9 @@ if [ ! -x "$VENV_PYTHON" ] || [ ! -f "$MANIFEST_TOOL" ] || [ ! -f "$INSTALL_MANI
     echo "  [错误] UP-N6.0 安装清单或验签运行时缺失，拒绝完成安装。"
     exit 1
 fi
-"$VENV_PYTHON" "$MANIFEST_TOOL" validate \
-    --manifest "$INSTALL_MANIFEST" \
+"$VENV_PYTHON" "$MANIFEST_TOOL" verify \
+    --root "$APP_DIR" \
+    --level deep \
     --trusted-keys-dir "$TRUSTED_KEYS"
 
 # 创建可写目录
@@ -36,14 +37,14 @@ QLH_DATA_DIR="$DATA_ROOT" "$VENV_PYTHON" "$RETENTION_TOOL" reassociate \
 # 验证 venv 可用性（用 --copies 构建，通常可直接使用）
 if [ -x "$VENV_PYTHON" ]; then
     if ! "$VENV_PYTHON" -c "import sys; sys.exit(0)" 2>/dev/null; then
-        echo "  [警告] venv Python 不可用，请在安装后重建 venv："
-        echo "    cd $APP_DIR && python3 -m venv --copies venv"
-        echo "    $APP_DIR/venv/bin/pip install -r $APP_DIR/requirements-cpu.txt"
+        echo "  [错误] venv Python 不可用，拒绝完成安装。" >&2
+        exit 1
     else
         echo "  venv Python 验证通过"
     fi
 else
-    echo "  [警告] venv 未找到 Python 解释器，可能需要重建 venv"
+    echo "  [错误] venv 未找到 Python 解释器，拒绝完成安装。" >&2
+    exit 1
 fi
 
 # 设置启动器权限

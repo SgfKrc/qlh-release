@@ -1,14 +1,17 @@
 @echo off
 setlocal
 cd /d "%~dp0\.."
+if not defined QLH_CORE_ROOT set "QLH_CORE_ROOT=%~dp0..\.."
 set "PYTHON=%CD%\.venv-packaging\Scripts\python.exe"
 if not exist "%PYTHON%" (
   echo [ERROR] .venv-packaging was not found.
   exit /b 1
 )
+"%PYTHON%" "%QLH_CORE_ROOT%\scripts\version_contract.py" --check
+if errorlevel 1 exit /b 1
 
-rem ---- 版本号唯一来源：packaging/version.txt（与 serve.py 的 /latest.json tag 对齐）----
-set "VERSION_FILE=packaging\version.txt"
+rem ---- Launcher version is generated from the canonical core release contract. ----
+set "VERSION_FILE=packaging\launcher-version.txt"
 if not exist "%VERSION_FILE%" (
   echo [ERROR] %VERSION_FILE% was not found.
   exit /b 1
@@ -81,7 +84,7 @@ if not exist "%ISCC%" (
 
 echo Building standalone Launcher Setup...
 pushd packaging
-"%ISCC%" setup-launcher.iss
+"%ISCC%" /DMyAppVersion=%LAUNCHER_VERSION% packaging\setup-launcher.iss
 if errorlevel 1 (
   popd
   exit /b 1

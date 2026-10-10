@@ -126,11 +126,18 @@ def test_launch_app_uses_internal_cwd_for_slim(monkeypatch, tmp_path):
     monkeypatch.setattr(ql, "installed_app_root", lambda *a, **k: tree)
     monkeypatch.setattr(rg, "ensure_runtime", lambda ctx: {"state": "ok"})
     captured = {}
-    monkeypatch.setattr(ql.subprocess, "Popen",
-                        lambda command, cwd=None: captured.update(command=command, cwd=cwd))
+    monkeypatch.setattr(
+        ql.subprocess,
+        "Popen",
+        lambda command, cwd=None, env=None: captured.update(
+            command=command, cwd=cwd, env=env,
+        ),
+    )
     ql.launch_app("serve")
     assert str(captured["cwd"]).endswith(("_internal", "_internal\\", "_internal/"))
     assert "8000" in captured["command"] and "0.0.0.0" in captured["command"]
+    assert captured["env"]["QLH_RELEASE_PROFILE_ENFORCE"] == "1"
+    assert captured["env"]["QLH_NODE_ROLE"] in {"master", "client", "auto"}
 
 
 def test_installed_app_root_recognizes_slim(monkeypatch, tmp_path):

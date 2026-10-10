@@ -1,0 +1,76 @@
+; First-install node-role contract shared by CPU and CUDA installers.
+var
+  QlhNodeRolePage: TInputOptionWizardPage;
+
+function QlhNodeRoleParameter: String;
+begin
+  Result := Lowercase(Trim(ExpandConstant('{param:NODE_ROLE|}')));
+end;
+
+function QlhNodeRoleParameterIsValid: Boolean;
+var
+  Value: String;
+begin
+  Value := QlhNodeRoleParameter;
+  Result := (Value = '') or (Value = 'master') or (Value = 'client') or
+    (Value = 'auto');
+end;
+
+procedure InitializeWizard;
+begin
+  QlhNodeRolePage := CreateInputOptionPage(
+    wpSelectTasks,
+    '节点角色',
+    '确认本机在星状集群中的角色',
+    'master 是唯一协调/转发中心；client 只连接 master；auto 由现有高可用角色控制器决定。'
+  );
+  QlhNodeRolePage.Add('master（推荐：首台或唯一一台 PC）');
+  QlhNodeRolePage.Add('client（工作节点，只连接 master）');
+  QlhNodeRolePage.Add('auto（已有高可用部署）');
+  QlhNodeRolePage.SelectedValueIndex := 0;
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := (QlhNodeRolePage <> nil) and
+    (PageID = QlhNodeRolePage.ID) and (QlhNodeRoleParameter <> '');
+end;
+
+function QlhSelectedNodeRole: String;
+var
+  ParameterRole: String;
+begin
+  ParameterRole := QlhNodeRoleParameter;
+  if ParameterRole <> '' then
+    Result := ParameterRole
+  else if QlhNodeRolePage.SelectedValueIndex = 1 then
+    Result := 'client'
+  else if QlhNodeRolePage.SelectedValueIndex = 2 then
+    Result := 'auto'
+  else
+    Result := 'master';
+end;
+
+procedure PersistInitialNodeRole;
+var
+  ConfigDir, ConfigPath, Payload, Role: String;
+begin
+  ConfigDir := ExpandConstant('{localappdata}\QLH-Edge-Inference');
+  ConfigPath := ConfigDir + '\node_config.json';
+  if FileExists(ConfigPath) then
+    exit;
+  if not ForceDirectories(ConfigDir) then
+    RaiseException('无法创建节点配置目录: ' + ConfigDir);
+  Role := QlhSelectedNodeRole;
+  Payload := '{' + #13#10 +
+    '  "bootstrapped": false,' + #13#10 +
+    '  "node": {' + #13#10 +
+    '    "role": "' + Role + '",' + #13#10 +
+    '    "role_confirmed": true,' + #13#10 +
+    '    "node_type": "pc",' + #13#10 +
+    '    "pipeline_worker": true' + #13#10 +
+    '  }' + #13#10 +
+    '}' + #13#10;
+  if not SaveStringToFile(ConfigPath, Payload, False) then
+    RaiseException('无法写入已确认的节点角色: ' + ConfigPath);
+end;

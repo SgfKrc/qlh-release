@@ -1,6 +1,9 @@
 ; QLH standalone bootstrap launcher installer.
+#include "release-versions.issinc"
 #define MyAppName      "QLH Launcher"
-#define MyAppVersion   "0.1.8.2"
+#ifndef MyAppVersion
+  #define MyAppVersion QlhLauncherVersion
+#endif
 #define MyAppPublisher "北京交通大学 · 大创项目"
 #define MySourceDir    "..\dist\QLH-Launcher"
 

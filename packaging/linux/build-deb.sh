@@ -14,25 +14,29 @@
 #   4. dpkg-deb 可用
 #
 # 输出:
-#   packaging/linux/qlh-edge-inference-cpu_0.1.8.1_amd64.deb
-#   packaging/linux/qlh-edge-inference-cuda_0.1.8.1_amd64.deb
+#   packaging/linux/qlh-edge-inference-cpu_<product-version>_amd64.deb
+#   packaging/linux/qlh-edge-inference-cuda_<product-version>_amd64.deb
 # ================================================================
 
 set -euo pipefail
 
 VARIANT="${1:-cpu}"
 PREFLIGHT_ONLY="${2:-}"
-VERSION="0.1.8.1"
 ARCH="amd64"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-PACKAGING_DIR="$PROJECT_ROOT/packaging"
-SRC_DIR="$PROJECT_ROOT/src"
-FRONTEND_DIR="$PROJECT_ROOT/frontend_cybergothic"
-BUILD_DIR="/tmp/qlh-deb-build"
-MODEL_TOOL_ROOT="$PROJECT_ROOT/build/model-tools/llama-quantize"
+PACKAGING_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+CORE_ROOT="${QLH_CORE_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+SRC_DIR="$CORE_ROOT/src"
+FRONTEND_DIR="$CORE_ROOT/frontend_cybergothic"
+VERSION_FILE="$PACKAGING_DIR/version.txt"
+RELEASE_CONTRACT="$CORE_ROOT/release-contract.json"
+VERSION="$(tr -d '\r\n' < "$VERSION_FILE")"
+BUILD_DIR="$(mktemp -d -t qlh-deb-build.XXXXXX)"
+trap 'rm -rf -- "$BUILD_DIR"' EXIT
+MODEL_TOOL_ROOT="$CORE_ROOT/build/model-tools/llama-quantize"
 MODEL_TOOL_PACKAGE="$MODEL_TOOL_ROOT/packages/linux-x86_64"
+RUNTIME_PROFILE="torch_${VARIANT}"
 
 if [ "$VARIANT" != "cpu" ] && [ "$VARIANT" != "cuda" ]; then
     echo "错误: 变体只能是 cpu 或 cuda。"
@@ -69,10 +73,7 @@ if ! [[ "$NODE_MAJOR" =~ ^[0-9]+$ ]] || [ "$NODE_MAJOR" -lt 18 ]; then
     echo "错误: 发布构建需要 Linux 原生 Node.js 18+，当前主版本: ${NODE_MAJOR:-unknown}"
     exit 1
 fi
-if [ -z "${QLH_SIGNING_KEY:-}" ] || [ ! -f "$QLH_SIGNING_KEY" ] || [ ! -r "$QLH_SIGNING_KEY" ]; then
-    echo "错误: QLH_SIGNING_KEY 必须指向可读的发布私钥文件。"
-    exit 1
-fi
+python3 "$CORE_ROOT/scripts/version_contract.py" --check
 
 echo "================================================================"
 echo "  QLH 边缘推理系统 — .deb 打包"
@@ -82,13 +83,17 @@ echo "  输出: $SCRIPT_DIR"
 echo "================================================================"
 echo ""
 
-echo "[preflight] Linux 原生发布工具链、Node.js ${NODE_MAJOR} 和签名 key 可用。"
+echo "[preflight] Linux 原生发布工具链和 Node.js ${NODE_MAJOR} 可用。"
 if [ "$PREFLIGHT_ONLY" = "--preflight-only" ]; then
     exit 0
 fi
+if [ -z "${QLH_SIGNING_KEY:-}" ] || [ ! -f "$QLH_SIGNING_KEY" ] || [ ! -r "$QLH_SIGNING_KEY" ]; then
+    echo "错误: QLH_SIGNING_KEY 必须指向可读的发布私钥文件。"
+    exit 1
+fi
 
 echo "[toolchain] 构建并校验固定 revision 的 llama-quantize..."
-python3 "$PROJECT_ROOT/scripts/build_llama_quantize.py" \
+python3 "$CORE_ROOT/scripts/build_llama_quantize.py" \
     --output-root "$MODEL_TOOL_ROOT" \
     --json
 if [ ! -x "$MODEL_TOOL_PACKAGE/llama-quantize" ] || [ ! -f "$MODEL_TOOL_PACKAGE/manifest.json" ]; then
@@ -106,7 +111,7 @@ cd "$FRONTEND_DIR"
 # 发布构建必须遵循已提交的 lockfile，不能在不同 npm 版本间重写它。
 npm ci --silent
 npx vite build
-cd "$PROJECT_ROOT"
+cd "$CORE_ROOT"
 
 # ---- 2. 创建目录结构 ----
 echo "[2/6] 创建安装目录结构..."
@@ -155,6 +160,7 @@ chmod 755 "$BUILD_DIR/usr/sbin/qlh-env-register"
 printf '%s\n' "$VERSION" > "$BUILD_DIR/opt/qlh-edge-inference/version.txt"
 # 将旧 launcher.py 复制为应用包装器引用的模块；新 qlh-launcher 仅负责 bootstrap
 cp "$PACKAGING_DIR/launcher.py" "$BUILD_DIR/opt/qlh-edge-inference/bin/__launcher_main__.py"
+cp "$RELEASE_CONTRACT" "$BUILD_DIR/opt/qlh-edge-inference/release-contract.json"
 
 # 复制 requirements 文件（供 postinst 重建 venv 参考）
 cp "$PACKAGING_DIR/requirements-cpu.txt" "$BUILD_DIR/opt/qlh-edge-inference/"
@@ -222,6 +228,7 @@ echo "  安装共享依赖..."
     --platform linux \
     --variant "$VARIANT" \
     --package-kind application \
+    --runtime-profile "$RUNTIME_PROFILE" \
     --key "$QLH_SIGNING_KEY" \
     --trusted-keys-dir "$PACKAGING_DIR/pubkeys"
 

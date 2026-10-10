@@ -231,15 +231,15 @@ def test_build_launcher_bat_outputs_zip_into_packaging_dist():
     script = (PROJECT_ROOT / "packaging" / "build-launcher.bat").read_text(
         encoding="utf-8"
     )
-    version = (PROJECT_ROOT / "packaging" / "version.txt").read_text(
+    version = (PROJECT_ROOT / "packaging" / "launcher-version.txt").read_text(
         encoding="utf-8"
     ).strip()
 
     assert 'LAUNCHER_ZIP=packaging\\dist\\QLH-Launcher-v' in script
     assert "%LAUNCHER_VERSION%" in script
     assert "packaging\\dist" in script
-    # 版本号唯一来源：packaging/version.txt（与 /latest.json 的 tag 对齐）
-    assert "packaging\\version.txt" in script
+    # Launcher 独立版本镜像由 canonical release contract 生成。
+    assert "packaging\\launcher-version.txt" in script
     expected = f"LAUNCHER_ZIP=packaging\\dist\\QLH-Launcher-v%LAUNCHER_VERSION%.zip"
     assert expected in script
     assert "Compress-Archive" in script
