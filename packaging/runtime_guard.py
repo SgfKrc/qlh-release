@@ -53,10 +53,11 @@ def profile_requirements_filename(profile: str) -> str:
 # 在首次引导时一起装上；probe 只防"旧 venv 缺启动必败模块"。
 _TORCH_RUNTIME_MODULES: tuple[str, ...] = (
     "torch", "transformers", "accelerate",
-    "fastapi", "uvicorn", "httpx", "psutil", "dotenv", "llama_cpp",
+    "safetensors", "sentencepiece", "google.protobuf",
+    "fastapi", "uvicorn", "httpx", "psutil", "dotenv", "llama_cpp", "gguf",
 )
 _LLAMA_CPP_ONLY_MODULES: tuple[str, ...] = (
-    "fastapi", "uvicorn", "httpx", "psutil", "dotenv", "llama_cpp",
+    "fastapi", "uvicorn", "httpx", "psutil", "dotenv", "llama_cpp", "gguf",
 )
 # Backward-compatible export for callers that used the old CPU/Torch default.
 RUNTIME_REQUIRED_MODULES = _TORCH_RUNTIME_MODULES
@@ -143,10 +144,11 @@ def torch_index(ctx: RuntimeContext) -> str:
 # fallback（无 requirements 文件时）需保证 probe 最小集可通过的包
 RUNTIME_FALLBACK_PACKAGES: tuple[str, ...] = (
     "transformers", "accelerate", "fastapi", "uvicorn",
-    "httpx", "psutil", "python-dotenv", "llama-cpp-python",
+    "safetensors>=0.4.3", "sentencepiece>=0.1.98,<0.3.0", "protobuf>=4.21.0,<5.0.0",
+    "httpx", "psutil", "python-dotenv", "llama-cpp-python", "gguf==0.19.0",
 )
 LLAMA_CPP_ONLY_FALLBACK_PACKAGES: tuple[str, ...] = (
-    "fastapi", "uvicorn", "httpx", "psutil", "python-dotenv", "llama-cpp-python",
+    "fastapi", "uvicorn", "httpx", "psutil", "python-dotenv", "llama-cpp-python", "gguf==0.19.0",
 )
 
 

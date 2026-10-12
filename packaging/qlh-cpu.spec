@@ -34,6 +34,12 @@ _SHELL_ROOT = os.environ.get(
 _SRC_DIR = os.path.join(_PROJECT_ROOT, "src")
 _RELEASE_CONTRACT = os.path.join(_PROJECT_ROOT, "release-contract.json")
 
+# MODEL-SUPPLY-01: explicit data + dependency closure for offline GGUF cutting.
+sys.path.insert(0, SPECPATH)
+from model_supply_resources import collect_model_supply_resources
+
+_SUPPLY_DATAS, _SUPPLY_IMPORTS = collect_model_supply_resources(_PROJECT_ROOT, freeze_conversion=True)
+
 # 唯一产品前端 dist 目录
 _FRONTEND_DIST = os.path.join(_SHELL_ROOT, "frontend_cybergothic", "dist")
 
@@ -85,7 +91,7 @@ a = Analysis(
         (_FRONTEND_DIST, 'frontend_cybergothic/dist'),
         (_LLAMA_QUANTIZE_PACKAGE, 'model-tools/llama-quantize/windows-x86_64'),
         (_RELEASE_CONTRACT, '.'),
-    ],
+    ] + _SUPPLY_DATAS,
     hiddenimports=[
         # ============================================================
         # llama.cpp 引擎（CPU/集显推理）
@@ -186,10 +192,13 @@ a = Analysis(
         # 标准库
         # ============================================================
         'asyncio',
-    ],
+    ] + _SUPPLY_IMPORTS,
     hookspath=[],
     runtime_hooks=[],
     excludes=[
+        # Supply modules ship as whitelisted sources with a lightweight package
+        # initializer; do not archive the developer probes/adapters initializer.
+        "scripts.model_tools",
         'tkinter',
         'test',
         'pydoc',
@@ -223,7 +232,7 @@ exe = EXE(
     [],
     name='QLH-Edge-Inference',
     icon='leds.ico',
-    console=False,  # ★ 静默模式：不显示控制台窗口，日志写文件
+    console=False,  # Preserve windowed startup; the cutter reconnects inherited pipes
     debug=False,
     strip=True,
     upx=False,

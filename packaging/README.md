@@ -53,6 +53,91 @@
 
 > PyInstaller 始终从**项目根目录**运行，输出到根目录 `dist/`。Inno Setup 从 `packaging/` 运行对应的 `.iss` 文件，通过 `..\dist\` 引用 PyInstaller 输出。
 
+### MODEL-SUPPLY-01：发行包内的 GGUF 校验、裁层与转换资源
+
+`qlh-edge.spec`、full `qlh-cpu.spec` / `qlh-cuda.spec` 通过
+`model_supply_resources.py` 显式收集 `_internal/scripts/cut_layers.py`、
+`_internal/gguf/` 的 Python 源码及 `_internal/llama_keep_head_worker.py`。
+NumPy 的原生依赖以及 PyYAML / tqdm / requests 和 `relay_contract` 同时经 Analysis
+收集。缺少必需脚本或 gguf 的构建会直接失败。裁层 gguf 固定为 `0.19.0`。
+
+生产供给调用的 `scripts.model_tools.gguf`、`gguf_convert` 和
+`llama_quantize_toolchain` / lock 同样作为明确的资源收集。发行包的
+`scripts/__init__.py` 与 `scripts/model_tools/__init__.py` 使用 packaging 专属轻量
+入口，避免依赖隐式 namespace 包或导入开发仓
+初始化器中的模型探测/适配模块；纯读 `verify_gguf` 不导入 torch/backend。
+规范转换事务源码保持字节不变，位于 `scripts/model_tools/_canonical/gguf_convert.py`；
+同名发行适配器只接入受信的包内转换器发现、依赖预检和冻结子进程路由。
+冻结主程序通过 `model_supply_sources._model_tools()` 在受信 `sys._MEIPASS`
+资源根下显式 `spec_from_file_location` 加载 `_qlh_supply_tools` 私有包及 verifier、
+converter shim 的小型相对依赖闭包。仅改 `sys.path` 或仅改包名称不足以阻止
+PyInstaller 按资源目录重用 PYZ 中开发包；每个子模块也必须使用源文件 loader。
+开发态继续导入原 `scripts.model_tools.*`，保持既有 monkeypatch 模块身份。
+冻结转换旗标另用显式文件 loader 加载 `conversion_runtime.py`，不导入开发包。
+
+HF 转换器及匹配版本的 `conversion/*.py`、`gguf-py/gguf/`、requirements 和
+上游许可证显式放在 `android/app/src/main/cpp/llama.cpp/` 资源路径；只复制这些
+产品资源，不复制 Android 工程或整个 scripts 树。CPU/CUDA full Analysis 显式分析
+磁盘执行源码的标准库和转换依赖，并在构建期拒绝缺失 torch / transformers /
+safetensors / tokenizers / sentencepiece / protobuf 的环境。Edge 仍不冻结 torch
+转换依赖，但保留转换器和 requirements，使预检可稳定报告
+`converter_dependencies_missing`，不返回 `not_probed` 或启动转换器。供给 API 可将
+该代码映射为 `SUPPLY_CONVERSION_CONVERTER_DEPENDENCIES_MISSING`。
+
+冻结主引擎由工件供给模块在**全新子进程**调用：
+
+```python
+subprocess.run(
+    [sys.executable, "--qlh-cut-layers", *cut_args],
+    capture_output=True, encoding="utf-8", errors="replace", timeout=3600,
+)
+```
+
+`launcher.py` 在日志重定向、config/backend/TUI 导入和单实例检查之前分发该旗标，
+用 `runpy` 执行包内的原版脚本并保留退出码及 stdout/stderr。调用方不能把冻结 exe
+当作解释器执行 `[sys.executable, "scripts/cut_layers.py", ...]`，那会重启主应用。
+full CPU/CUDA 保持 `console=False`，普通启动不新增控制台窗口。仅裁层旗标分支
+在 windowed bootloader 将 `sys.stdout/sys.stderr` 置空时，使用 Windows
+`GetStdHandle` / `DuplicateHandle` 与 `msvcrt.open_osfhandle` 接回父进程的管道，
+以 UTF-8 输出；不调用 `AllocConsole` / `AttachConsole`。父进程须创建 stdout/stderr
+管道（上面的 `capture_output=True` 即可），裁层不读取 stdin。句柄恢复失败时返回 2
+并报告 `model_supply_stdio_unavailable`；若两个输出句柄均缺失，则同名诊断只能发送到
+Windows 调试输出。Edge 保持已有 console bootloader，自动调用方可设置
+`CREATE_NO_WINDOW`。这里的入口仅离线处理 GGUF，不启动 API 或导入 torch，也不将
+源文件装载为推理模型。两个生产 helper 分支都通过 `dispatch_helper` 捕获顶层
+异常，将 `model_supply_helper_failed` 与 traceback 写入继承 stderr 并返回非零，
+避免 windowed bootloader 的未处理异常弹窗；正常 CLI 退出码继续原样返回。
+
+```powershell
+.\QLH-Edge-Inference.exe --qlh-cut-layers --src source.gguf --dst middle.gguf --k 4 --end 24 --manifest middle.manifest.json --source-model-id qwen3-5-9b --tokenizer-sha256 <已核验的64位摘要>
+.\QLH-Edge-Inference.exe --qlh-cut-layers --src middle.gguf --verify-manifest middle.manifest.json
+```
+
+冻结转换事务使用另一个早期入口
+`[sys.executable, "--qlh-convert-hf-to-gguf", *converter_args]`，同样在应用启动前
+进入独立子进程并接回继承输出管道；不会用 exe 去执行 `.py` 路径。入口仅接受
+发行资源中的转换器，Edge 缺依赖时返回 2 和 `converter_dependencies_missing`。
+Windows 转换/量化子进程使用 `CREATE_NO_WINDOW`；普通 CPU/CUDA 启动仍为 windowed。
+源代码运行的 slim/Linux 服务继续用外部 venv Python 调用转换器脚本。
+
+就地裁层入口只接受 GGUF；即使 full 包包含 torch，也不承诺通过此入口就地处理
+Safetensors。Safetensors 须由具备转换能力的节点处理，或接收 master 分发的段。
+生成仍使用正式脚本的身份、区间和摘要 manifest；供给层须继续验证与登记，生成
+成功不代表 loaded-ready。切段峰值、源文件与临时工件磁盘空间由供给规划层核算。
+
+当前 `build-cpu.bat` 的 `torch_cpu` 档使用 source-backed `qlh-slim.spec`，其同样显式
+携带裁层脚本及 gguf Python 资源，但 bootstrap exe 没有冻结推理运行时：服务中的
+外部 venv Python 直接执行 `_internal/scripts/cut_layers.py`。Linux .deb 通过同一
+资源白名单复制裁层及供给/转换源码到 `/opt/qlh-edge-inference/`，无需 Linux 构建
+环境安装 PyInstaller，由包内 venv Python 调用。两者通过 requirements 和 runtime
+probe 保证 gguf 可用；torch profile 额外检查 safetensors / sentencepiece / protobuf，
+`llama_cpp_only` 不引导这些转换依赖。独立 `QLH-Model-Tools` 仍保持原有
+轻量子命令边界，不宣称已提供 Safetensors 转换或新的冻结裁层入口。
+
+验收区分：专属测试检验资源、全新进程入口、格式拒绝和原始 manifest；小型冻结
+探针验证真实 exe 离线裁层。这些均不替代完整签名安装包、干净机、native keep-head
+shim、Android 或三机供给/装载验收。星状拓扑与仅物化本段的推理约束不变。
+
 ### GGUF 量化器工具链（MODEL-TOOLS）
 
 GGUF 转换的 `llama-quantize` 不从 PATH 随意拾取。版本锁位于 `scripts/model_tools/llama_quantize.lock.json`，当前固定 llama.cpp commit `47e1de77aa0f06bf73cfd8c5281d95979f89fcbe`。构建器只在父仓库外层 `build/` 写入，不修改 llama.cpp submodule，也不联网：
@@ -208,8 +293,8 @@ cd frontend_cybergothic && npm run build                    # 生成 frontend_cy
 | 平台/产物 | 打包源 | 说明 |
 |---|---|---|
 | Windows 主程序（Inno） | `dist\QLH-Edge-Inference\*`（PyInstaller 输出签名树） | 源 = PyInstaller dist，不是仓库根；`*` + `recursesubdirs` 只遍历 dist 树 |
-| Windows PyInstaller spec | `launcher.py` 引用链 + 显式 `datas` | `datas` 仅 `frontend_cybergothic/dist`、`model-tools/llama-quantize/...`；`hiddenimports` 仅 llama_cpp/engine/uvicorn/fastapi/transformers 等运行时 |
-| Linux .deb | `src/`（tar）+ `packaging/` 运行时 py + `frontend_cybergothic/dist` + model-tools | `build-deb.sh` 的 `SRC_DIR=src`（不含 scripts/docs/tools/fixtures 等） |
+| Windows PyInstaller spec | `launcher.py` 引用链 + 显式 `datas` | `datas` 包含前端、受管工具链和本节裁层资源白名单；`hiddenimports` 仅 llama_cpp/engine/uvicorn/fastapi/transformers 等运行时 |
+| Linux .deb | `src/`（tar）+ `packaging/` 运行时 py + `frontend_cybergothic/dist` + model-tools | `build-deb.sh` 的 `SRC_DIR=src`，另按白名单复制裁层、供给工具与转换资源（不复制 scripts/docs/tools/fixtures 整树） |
 | 独立工具 | `QLH-Model-Tools` / `QLH-Data-Retention` / `QLH-Install-Manifest` / `QLH-TUI-Chat` | 面向终端用户/安装运维的产品工具（单独 spec 构建） |
 
 ### 进包白名单（dist\.{app} 实测清单，2026-08-20）
@@ -219,6 +304,8 @@ cd frontend_cybergothic && npm run build                    # 生成 frontend_cy
 | `_internal/` | PyInstaller 运行时（Python + dell 依赖 + hiddenimports） | 运行时 |
 | `docs/` | 仅 **README.md / 整体架构 / 核心技术原理 / 模块接口说明** 4 个 | 产品文档（by `build-cpu.bat` 白名单拷贝） |
 | `tools/` | `QLH-Data-Retention.exe`、`QLH-Install-Manifest.exe`、`convert_to_gguf.py` | 安装/数据运维与终端 GGUF 工具（产品） |
+| `_internal/scripts/cut_layers.py`、`_internal/scripts/model_tools/` 白名单、`_internal/gguf/`、`_internal/llama_keep_head_worker.py` | 离线 GGUF 校验、裁层、转换预检/事务与层段 worker | 产品功能（MODEL-SUPPLY-01） |
+| `_internal/android/app/src/main/cpp/llama.cpp/` 转换资源白名单 | HF 转换器、conversion 模块、匹配 GGUF 源码、requirements / LICENSE | 产品功能（MODEL-SUPPLY-01；不携带 Android 工程） |
 | `model-tools/` `model-tools.bat` | 模型下载/GGUF 工具 | 产品功能 |
 | `QLH-TUI-Chat`、`bjtu.bat` | 终端聊天与启动脚本 | 产品功能 |
 | `pubkeys/`、`manifest/`、`version.txt`、`signing.py` | 验签公钥、安装清单、版本 | 发布必需 |
@@ -228,7 +315,7 @@ cd frontend_cybergothic && npm run build                    # 生成 frontend_cy
 
 | 目录/文件 | 性质 |
 |---|---|
-| `scripts/`（仓库根） | 开发自动化/QE 门：`quality_gate_*`、`run_*`、`benchmark_*`、`experiment_*`、`smoke_*`、`doc_maintenance_audit.py`、`model_fleet_*`、`validate_*` 等 |
+| `scripts/`（仓库根，裁层/供给资源逐文件白名单除外） | 开发自动化/QE 门：`quality_gate_*`、`run_*`、`benchmark_*`、`experiment_*`、`smoke_*`、`doc_maintenance_audit.py`、`model_fleet_*`、`validate_*` 等 |
 | `docs/agent_tool/` | 文档维护 agent 扫描器（M1） |
 | `docs/`（除白名单 4 文档外的全部） | 专项/排期/问答/试验文档（含投机解码、抗弱网、任务链、RAG、排期等） |
 | `tools/`（仓库根） | `ssh_sync_*`、`patch_dispatch/patch_listener`、`modelscope_download` 等运维/部署工具 |
@@ -239,9 +326,10 @@ cd frontend_cybergothic && npm run build                    # 生成 frontend_cy
 
 ### 分类边界（容易出现歧义，统一口径）
 
-- **仓库根 `scripts/`** = 开发自动化/QE/实验脚本，**永不进包**；`packaging/scripts/`（如
-  `convert_to_gguf.py`）是**打包侧产物、面向终端用户**，可进包。名字都叫 scripts，但**只有
-  `packaging/scripts/` 这一个例外**，且必须逐个白名单列出。
+- **仓库根 `scripts/`** 按开发自动化/QE/实验脚本处理，整树不得进包；票 12b 明确
+  授权的 `scripts/cut_layers.py` 和供给所用 GGUF 校验/转换事务/quantizer lock 是
+  逐文件白名单例外，完整清单由 `model_supply_resources.py` 定义。`packaging/scripts/`
+  的终端产品工具（如 `convert_to_gguf.py`）同样必须逐个白名单列出。
 - `QLH-Model-Tools` / `QLH-Data-Retention`（数据保留）/ `QLH-Install-Manifest`（安装清单）/
   `QLH-TUI-Chat` 属于**产品/安装运维工具**，可进包；`tools/`（仓库根）的 SSH 补丁同步、
   补丁收发是**开发/运维自动化**，不进包。
@@ -253,7 +341,7 @@ cd frontend_cybergothic && npm run build                    # 生成 frontend_cy
 2. 改 `build-cpu.bat`/`build-cuda.bat`/`build-deb.sh` 的 copy/打包清单 → 逐条核对不会
    把 `scripts/`、`docs/`（非白名单）、`tools/`、`fixtures/`、agent 配置带进去。
 3. 打包后核对 `dist\QLH-Edge-Inference\` 顶层清单：应只出现本节"进包白名单"的条目；
-   若出现 `scripts/`、`docs/`（远超 4 份）、`agent_tool`、`ssh_sync_*`、`.reasonix` 等即回归，禁止发布。
+   若出现白名单以外的 `scripts/` 内容、`docs/`（远超 4 份）、`agent_tool`、`ssh_sync_*`、`.reasonix` 等即回归，禁止发布。
 4. 超过 2 份文档进 `docs/`、任何 `packaging/spec` 引入新 `datas` 指向根目录开发目录 → 需评审。
 
 ---

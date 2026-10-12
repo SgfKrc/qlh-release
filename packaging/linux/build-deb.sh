@@ -164,6 +164,10 @@ cp "$RELEASE_CONTRACT" "$BUILD_DIR/opt/qlh-edge-inference/release-contract.json"
 
 # 复制 requirements 文件（供 postinst 重建 venv 参考）
 cp "$PACKAGING_DIR/requirements-cpu.txt" "$BUILD_DIR/opt/qlh-edge-inference/"
+# MODEL-SUPPLY-01 product resource whitelist; never copy the whole scripts tree.
+python3 "$PACKAGING_DIR/model_supply_resources.py" \
+    --project-root "$CORE_ROOT" \
+    --stage-source-root "$BUILD_DIR/opt/qlh-edge-inference"
 
 # 复制桌面和服务文件
 cp "$SCRIPT_DIR/qlh-edge-inference.desktop" "$BUILD_DIR/usr/share/applications/"

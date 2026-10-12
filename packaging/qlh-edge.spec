@@ -39,6 +39,12 @@ _PROJECT_ROOT = os.environ.get(
 _SRC_DIR = os.path.join(_PROJECT_ROOT, "src")
 _RELEASE_CONTRACT = os.path.join(_PROJECT_ROOT, "release-contract.json")
 
+# MODEL-SUPPLY-01: explicit data + dependency closure for offline GGUF cutting.
+sys.path.insert(0, SPECPATH)
+from model_supply_resources import collect_model_supply_resources
+
+_SUPPLY_DATAS, _SUPPLY_IMPORTS = collect_model_supply_resources(_PROJECT_ROOT)
+
 # 受管 llama-quantize（模型工具链）—— 可选：缺失时只跳过该工具，不阻断主引擎打包。
 sys.path.insert(0, _PROJECT_ROOT)
 try:
@@ -78,23 +84,13 @@ try:
 except Exception as _e:  # noqa: BLE001 - 打包期诊断
     print(f"[spec] WARNING: Failed to collect llama.cpp DLLs: {_e}")
 
-_datas = [(_RELEASE_CONTRACT, ".")]
+_datas = [(_RELEASE_CONTRACT, "."), *_SUPPLY_DATAS]
 if _lq_ok:
     _datas.append((_LLAMA_QUANTIZE_PACKAGE, "model-tools/llama-quantize/windows-x86_64"))
 else:
     print("[spec] 跳过 llama-quantize（未通过受管包校验）")
 
-# ★ 层段 keep-head 的隔离 worker 是**子进程脚本**，不是 import：
-#   `llama_keep_head.py:298` 用 `Path(__file__).with_name("llama_keep_head_worker.py")`
-#   配合 `sys.executable` 起它 ⇒ 它必须与 `llama_keep_head.py` **同目录**（这里被收到
-#   `_internal/` 根），且必须以 data 形式打进包。此前漏了它 ⇒ 层段 Stage 直接失败：
-#   `KeepHeadUnavailable: keep-head worker missing: ...\_internal\llama_keep_head_worker.py`
-#   （2026-10-06 用 Edge 包当 layer worker 入网时实测踩到）。
-_keep_head_worker = os.path.join(_SRC_DIR, "llama_keep_head_worker.py")
-if os.path.isfile(_keep_head_worker):
-    _datas.append((_keep_head_worker, "."))
-else:
-    print("[spec] 警告：未找到 llama_keep_head_worker.py，层段 Stage 将不可用")
+# Cutting scripts, GGUF sources and worker data are required by the shared collector.
 
 a = Analysis(
     ["launcher.py"],
@@ -165,10 +161,13 @@ a = Analysis(
 
         # ---- 标准库 ----
         "asyncio",
-    ],
+    ] + _SUPPLY_IMPORTS,
     hookspath=[],
     runtime_hooks=[],
     excludes=[
+        # Supply modules ship as whitelisted sources with a lightweight package
+        # initializer; do not archive the developer probes/adapters initializer.
+        "scripts.model_tools",
         "tkinter",
         "test",
         "pydoc",

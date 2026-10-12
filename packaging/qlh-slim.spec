@@ -44,6 +44,11 @@ _ROOT = os.environ.get(
 )
 _SRC_DIR = os.path.join(_ROOT, "src")
 _RELEASE_CONTRACT = os.path.join(_ROOT, "release-contract.json")
+from model_supply_resources import collect_model_supply_resources
+
+_SUPPLY_DATAS, _ = collect_model_supply_resources(_ROOT)
+# The slim bootstrap does not freeze cutter dependencies: its external runtime
+# installs gguf from the selected requirements and executes scripts/cut_layers.py.
 _PUBKEYS = os.path.join(SPECPATH, "pubkeys")
 _ICO = os.path.join(SPECPATH, "leds.ico")
 
@@ -75,7 +80,7 @@ a = Analysis(
         (_ICO, "."),
         (_PUBKEYS, "pubkeys"),
         (_RELEASE_CONTRACT, "."),
-    ] + _RUNTIME_REQS,
+    ] + _RUNTIME_REQS + _SUPPLY_DATAS,
     hiddenimports=[
         "tkinter",
         "tkinter.ttk",

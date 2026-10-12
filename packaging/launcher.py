@@ -19,6 +19,16 @@ from __future__ import annotations
 
 import os
 import sys
+
+# MODEL-SUPPLY-01: dispatch before logging redirection, config, backend imports,
+# single-instance checks or TUI startup.  This is a fresh offline child process.
+if __name__ == "__main__" and sys.argv[1:2] in (
+    ["--qlh-cut-layers"], ["--qlh-convert-hf-to-gguf"],
+):
+    from model_supply_runtime import dispatch_helper
+
+    raise SystemExit(dispatch_helper(sys.argv[1], sys.argv[2:]))
+
 import ipaddress
 
 # ═══════════════════════════════════════════════════════════════════
