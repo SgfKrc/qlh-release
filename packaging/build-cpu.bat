@@ -12,6 +12,7 @@ REM   这里的默认值指向主仓根，以及主仓下的产品壳子模块�
 REM   变量（脚本只补默认值，不覆盖已定义的值）。
 if not defined QLH_CORE_ROOT set "QLH_CORE_ROOT=%~dp0..\.."
 if not defined QLH_SHELL_ROOT set "QLH_SHELL_ROOT=%~dp0..\..\frontend_cybergothic"
+for %%I in ("%QLH_CORE_ROOT%") do set "QLH_CORE_ROOT=%%~fI"
 
 REM ---- 选择 runtime profile ----
 REM ★ 2026-10-03：集显版改为**profile 化的 slim 打包**（`qlh-slim.spec`）。原
@@ -52,6 +53,13 @@ if not exist "packaging\version.txt" (
     exit /b 1
 )
 set /p APP_VERSION=<"packaging\version.txt"
+
+REM Bind this build to fresh source bytes before pip/PyInstaller can run.
+set "QLH_BUILD_INFO=%QLH_CORE_ROOT%\build\release-provenance\windows-cpu-%RANDOM%-%RANDOM%\build-info.json"
+"%PYTHON%" -B packaging\release_build_provenance.py begin ^
+    --root "%QLH_CORE_ROOT%" --packaging-root "%CD%" ^
+    --snapshot "%QLH_BUILD_INFO%"
+if errorlevel 1 exit /b 1
 
 REM ---- 安装依赖（按 profile）----
 echo.
@@ -153,6 +161,11 @@ if exist "dist\QLH-Edge-Inference\QLH-Edge-Inference.exe" (
     if errorlevel 1 exit /b 1
     if not exist "dist\QLH-Edge-Inference\tools\QLH-Install-Manifest.exe" exit /b 1
     xcopy /e /i /y "packaging\pubkeys" "dist\QLH-Edge-Inference\pubkeys" >nul
+    if errorlevel 1 exit /b 1
+    REM Recheck the pre-build snapshot and include its exact bytes before signing.
+    "%PYTHON%" -B packaging\release_build_provenance.py stage ^
+        --root "%QLH_CORE_ROOT%" --packaging-root "%CD%" ^
+        --snapshot "%QLH_BUILD_INFO%" --app-root "dist\QLH-Edge-Inference"
     if errorlevel 1 exit /b 1
     "%PYTHON%" packaging\install_manifest.py build ^
         --root "dist\QLH-Edge-Inference" ^

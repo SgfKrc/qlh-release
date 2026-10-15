@@ -2,6 +2,7 @@
 setlocal
 cd /d "%~dp0\.."
 if not defined QLH_CORE_ROOT set "QLH_CORE_ROOT=%~dp0..\.."
+for %%I in ("%QLH_CORE_ROOT%") do set "QLH_CORE_ROOT=%%~fI"
 set "PYTHON=%CD%\.venv-packaging\Scripts\python.exe"
 if not exist "%PYTHON%" (
   echo [ERROR] .venv-packaging was not found.
@@ -27,6 +28,13 @@ if not defined QLH_SIGNING_KEY (
   exit /b 1
 )
 
+REM Bind this build to fresh source bytes before pip/PyInstaller can run.
+set "QLH_BUILD_INFO=%QLH_CORE_ROOT%\build\release-provenance\windows-launcher-%RANDOM%-%RANDOM%\build-info.json"
+"%PYTHON%" -B packaging\release_build_provenance.py begin ^
+    --root "%QLH_CORE_ROOT%" --packaging-root "%CD%" ^
+    --snapshot "%QLH_BUILD_INFO%"
+if errorlevel 1 exit /b 1
+
 echo Building standalone QLH Launcher v%LAUNCHER_VERSION%...
 "%PYTHON%" -m pip install --disable-pip-version-check --quiet -r packaging\requirements-launcher.txt
 if errorlevel 1 exit /b 1
@@ -45,6 +53,11 @@ if not exist "dist\QLH-Launcher\tools" mkdir "dist\QLH-Launcher\tools"
 if errorlevel 1 exit /b 1
 if not exist "dist\QLH-Launcher\tools\QLH-Install-Manifest.exe" exit /b 1
 xcopy /e /i /y "packaging\pubkeys" "dist\QLH-Launcher\pubkeys" >nul
+if errorlevel 1 exit /b 1
+REM Recheck the pre-build snapshot and include its exact bytes before signing.
+"%PYTHON%" -B packaging\release_build_provenance.py stage ^
+    --root "%QLH_CORE_ROOT%" --packaging-root "%CD%" ^
+    --snapshot "%QLH_BUILD_INFO%" --app-root "dist\QLH-Launcher"
 if errorlevel 1 exit /b 1
 "%PYTHON%" packaging\install_manifest.py build ^
   --root "dist\QLH-Launcher" ^

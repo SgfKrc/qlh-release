@@ -31,6 +31,11 @@ SRC_DIR="$CORE_ROOT/src"
 FRONTEND_DIR="$CORE_ROOT/frontend_cybergothic"
 VERSION_FILE="$PACKAGING_DIR/version.txt"
 RELEASE_CONTRACT="$CORE_ROOT/release-contract.json"
+# No unverified source-export fallback: metadata must come from real Git sources.
+if [ ! -e "$CORE_ROOT/.git" ]; then
+    echo "SOURCE_CHECKOUT_REQUIRED: mount the real main Git checkout and fixed submodules; environment revisions and Git-free exports cannot prove build identity." >&2
+    exit 2
+fi
 VERSION="$(tr -d '\r\n' < "$VERSION_FILE")"
 BUILD_DIR="$(mktemp -d -t qlh-deb-build.XXXXXX)"
 trap 'rm -rf -- "$BUILD_DIR"' EXIT
@@ -93,6 +98,14 @@ if [ -z "${QLH_SIGNING_KEY:-}" ] || [ ! -f "$QLH_SIGNING_KEY" ] || [ ! -r "$QLH_
 fi
 
 echo "[toolchain] 构建并校验固定 revision 的 llama-quantize..."
+# Keep the original snapshot outside the temporary .deb staging tree.
+mkdir -p "$CORE_ROOT/build/release-provenance"
+PROVENANCE_DIR="$(mktemp -d "$CORE_ROOT/build/release-provenance/linux-${VARIANT}.XXXXXX")"
+BUILD_INFO="$PROVENANCE_DIR/source/build-info.json"
+python3 -B "$PACKAGING_DIR/release_build_provenance.py" begin \
+    --root "$CORE_ROOT" --packaging-root "$PACKAGING_DIR/.." \
+    --snapshot "$BUILD_INFO"
+
 python3 "$CORE_ROOT/scripts/build_llama_quantize.py" \
     --output-root "$MODEL_TOOL_ROOT" \
     --json
@@ -225,6 +238,10 @@ echo "  安装共享依赖..."
 "$VENV_PIP" install -r "$PACKAGING_DIR/requirements-cpu.txt"
 
 # UP-N6.0：扫描最终应用树，签名后立即以发布信任集复验并原子落盘。
+# Refuse source drift before signing and include the same pre-build metadata.
+python3 -B "$PACKAGING_DIR/release_build_provenance.py" stage \
+    --root "$CORE_ROOT" --packaging-root "$PACKAGING_DIR/.." \
+    --snapshot "$BUILD_INFO" --app-root "$BUILD_DIR/opt/qlh-edge-inference"
 "$VENV_DIR/bin/python" "$PACKAGING_DIR/install_manifest.py" build \
     --root "$BUILD_DIR/opt/qlh-edge-inference" \
     --app-id qlh-edge-inference \
