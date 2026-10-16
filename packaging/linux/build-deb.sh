@@ -28,12 +28,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PACKAGING_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CORE_ROOT="${QLH_CORE_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 SRC_DIR="$CORE_ROOT/src"
-FRONTEND_DIR="$CORE_ROOT/frontend_cybergothic"
+FRONTEND_DIR="$CORE_ROOT/frontend_cybergothic/frontend_cybergothic"
 VERSION_FILE="$PACKAGING_DIR/version.txt"
 RELEASE_CONTRACT="$CORE_ROOT/release-contract.json"
 # No unverified source-export fallback: metadata must come from real Git sources.
 if [ ! -e "$CORE_ROOT/.git" ]; then
     echo "SOURCE_CHECKOUT_REQUIRED: mount the real main Git checkout and fixed submodules; environment revisions and Git-free exports cannot prove build identity." >&2
+    exit 2
+fi
+# The frontend submodule contains its npm project one directory below its root.
+# Reject an incomplete checkout before provisioning tools or creating build output.
+if [ ! -f "$FRONTEND_DIR/package.json" ] || [ ! -f "$FRONTEND_DIR/package-lock.json" ]; then
+    echo "FRONTEND_SOURCE_MISSING: expected package.json and package-lock.json in $FRONTEND_DIR" >&2
     exit 2
 fi
 VERSION="$(tr -d '\r\n' < "$VERSION_FILE")"
@@ -124,6 +130,10 @@ cd "$FRONTEND_DIR"
 # 发布构建必须遵循已提交的 lockfile，不能在不同 npm 版本间重写它。
 npm ci --silent
 npx vite build
+if [ ! -f "$FRONTEND_DIR/dist/index.html" ]; then
+    echo "FRONTEND_BUILD_MISSING: expected $FRONTEND_DIR/dist/index.html after vite build" >&2
+    exit 1
+fi
 cd "$CORE_ROOT"
 
 # ---- 2. 创建目录结构 ----

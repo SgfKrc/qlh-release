@@ -1,6 +1,17 @@
 @echo off
 setlocal
 cd /d "%~dp0\.."
+if errorlevel 1 exit /b 1
+set "LAUNCHER_ISS=%~dp0setup-launcher.iss"
+if not exist "%LAUNCHER_ISS%" (
+  echo [ERROR] Launcher Setup input was not found.
+  exit /b 1
+)
+if not exist "%~dp0release-versions.issinc" (
+  echo [ERROR] Launcher Setup version include was not found.
+  exit /b 1
+)
+if not defined ISCC set "ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if not defined QLH_CORE_ROOT set "QLH_CORE_ROOT=%~dp0..\.."
 for %%I in ("%QLH_CORE_ROOT%") do set "QLH_CORE_ROOT=%%~fI"
 set "PYTHON=%CD%\.venv-packaging\Scripts\python.exe"
@@ -21,6 +32,11 @@ set "LAUNCHER_VERSION="
 for /f "usebackq delims=" %%V in ("%VERSION_FILE%") do set "LAUNCHER_VERSION=%%V"
 if "%LAUNCHER_VERSION%"=="" (
   echo [ERROR] %VERSION_FILE% is empty.
+  exit /b 1
+)
+set "LAUNCHER_SETUP=%~dp0dist\QLH-Launcher-Setup-v%LAUNCHER_VERSION%.exe"
+if exist "%ISCC%" if exist "%LAUNCHER_SETUP%" (
+  echo [ERROR] Launcher Setup output already exists; use a fresh build directory.
   exit /b 1
 )
 if not defined QLH_SIGNING_KEY (
@@ -89,23 +105,23 @@ if not exist "%LAUNCHER_ZIP%" (
 echo Launcher output: dist\QLH-Launcher\
 echo Launcher self-update asset: %LAUNCHER_ZIP%
 
-set "ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if not exist "%ISCC%" (
   echo [INFO] Inno Setup was not found; skipping Launcher Setup.
   exit /b 0
 )
 
 echo Building standalone Launcher Setup...
-pushd packaging
-"%ISCC%" /DMyAppVersion=%LAUNCHER_VERSION% packaging\setup-launcher.iss
+pushd "%~dp0"
+if errorlevel 1 exit /b 1
+call "%ISCC%" /DMyAppVersion=%LAUNCHER_VERSION% "%LAUNCHER_ISS%"
 if errorlevel 1 (
   popd
   exit /b 1
 )
 popd
-if not exist "packaging\dist\QLH-Launcher-Setup-v%LAUNCHER_VERSION%.exe" (
+if not exist "%LAUNCHER_SETUP%" (
   echo [ERROR] Launcher Setup was not generated.
   exit /b 1
 )
-echo Installer output: packaging\dist\QLH-Launcher-Setup-v%LAUNCHER_VERSION%.exe
+echo Installer output: %LAUNCHER_SETUP%
 exit /b 0
