@@ -41,7 +41,13 @@ _RELEASE_CONTRACT = os.path.join(_PROJECT_ROOT, "release-contract.json")
 
 # MODEL-SUPPLY-01: explicit data + dependency closure for offline GGUF cutting.
 sys.path.insert(0, SPECPATH)
+from keep_head_resources import collect_keep_head_binaries
 from model_supply_resources import collect_model_supply_resources
+
+# Required patched ABI: fail before Analysis if the native closure is incomplete.
+# Keep this TOC out of Analysis: its dependency scan relocates build-tree DLLs
+# into the shared bundle root, where they collide with pip's same-name ggml DLLs.
+_KEEP_HEAD_BINARIES = collect_keep_head_binaries(_PROJECT_ROOT)
 
 _SUPPLY_DATAS, _SUPPLY_IMPORTS = collect_model_supply_resources(_PROJECT_ROOT)
 
@@ -218,6 +224,7 @@ coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
+    _KEEP_HEAD_BINARIES,
     strip=False,
     upx=False,
     name="QLH-Edge-Inference",

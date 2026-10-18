@@ -96,6 +96,15 @@ echo.
 echo [4/5] 准备打包目录...
 if not exist "logs" mkdir "logs"
 
+REM Build the pinned native CPU closure before any PyInstaller invocation.
+REM Tool overrides: QLH_KEEP_HEAD_TOOLCHAIN_BIN and QLH_KEEP_HEAD_CMAKE.
+REM The builder rejects stale output; use a fresh release checkout.
+if /i "!QLH_BUILD_PROFILE!"=="llama_cpp_only" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%QLH_CORE_ROOT%\scripts\model_tools\build_keep_head_cpu.ps1" ^
+        -SourceRoot "%QLH_CORE_ROOT%"
+    if errorlevel 1 exit /b !errorlevel!
+)
+
 REM ---- PyInstaller 打包 ----
 echo.
 echo [5/5] PyInstaller 打包...

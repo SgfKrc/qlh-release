@@ -997,7 +997,7 @@ def _check_tailscale_status() -> dict:
     return result
 
 
-def _prompt_tailscale_setup(status: dict) -> bool:
+def _prompt_tailscale_setup(status: dict, owner_hwnd=None) -> bool:
     """
     首次启动时引导用户安装/加入 Tailscale 组网。
 
@@ -1149,11 +1149,11 @@ def _check_tailscale_requirement(owner_hwnd=None) -> bool:
             print("  请确保 Tailscale 正在运行且已连接到组网。")
             print(f"  如有问题，请重新访问邀请链接: {TAILSCALE_INVITE_URL}")
             print()
-            return _prompt_tailscale_setup(status)
+            return _prompt_tailscale_setup(status, owner_hwnd=owner_hwnd)
 
     # 首次启动 → 完整引导
     status = _check_tailscale_status()
-    return _prompt_tailscale_setup(status)
+    return _prompt_tailscale_setup(status, owner_hwnd=owner_hwnd)
 
 
 def _torch_available() -> bool:
