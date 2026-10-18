@@ -176,6 +176,12 @@ if exist "dist\QLH-Edge-Inference\QLH-Edge-Inference.exe" (
         --root "%QLH_CORE_ROOT%" --packaging-root "%CD%" ^
         --snapshot "%QLH_BUILD_INFO%" --app-root "dist\QLH-Edge-Inference"
     if errorlevel 1 exit /b 1
+    REM Capture the complete frozen Edge tree before the signed inventory.
+    if /i "!QLH_BUILD_PROFILE!"=="llama_cpp_only" (
+        "%PYTHON%" -B "%QLH_CORE_ROOT%\src\runtime_frozen_source.py" ^
+            --root "dist\QLH-Edge-Inference"
+        if errorlevel 1 exit /b !errorlevel!
+    )
     "%PYTHON%" packaging\install_manifest.py build ^
         --root "dist\QLH-Edge-Inference" ^
         --app-id qlh-edge-inference ^
