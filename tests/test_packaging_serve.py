@@ -79,25 +79,6 @@ def test_pc_installer_scan_excludes_android_packages_in_dist(tmp_path, monkeypat
     ]
 
 
-def test_launcher_scan_finds_setup_and_zip_excluding_main_installer(tmp_path, monkeypatch):
-    serve = _load_serve_module()
-    dist_dir = tmp_path / "packaging" / "dist"
-    dist_dir.mkdir(parents=True)
-    monkeypatch.setattr(serve, "DIST_DIR", str(dist_dir))
-
-    launcher_setup = dist_dir / "QLH-Launcher-Setup-v0.1.8.1.exe"
-    launcher_zip = dist_dir / "QLH-Launcher-v0.1.8.1.zip"
-    main_installer = dist_dir / "QLH-Edge-Inference-Setup-v0.1.8.1.exe"
-    launcher_setup.write_bytes(b"exe")
-    launcher_zip.write_bytes(b"zip")
-    main_installer.write_bytes(b"exe")
-
-    entries = serve._scan_launcher_assets()
-
-    assert entries == [
-        ("QLH-Launcher-Setup-v0.1.8.1.exe", "/QLH-Launcher-Setup-v0.1.8.1.exe", str(launcher_setup)),
-        ("QLH-Launcher-v0.1.8.1.zip", "/QLH-Launcher-v0.1.8.1.zip", str(launcher_zip)),
-    ]
 
 
 def test_android_download_scan_includes_dist_and_gradle_outputs(tmp_path, monkeypatch):
@@ -149,15 +130,6 @@ def test_reconfigure_utf8_converts_gbk_streams_without_crashing():
     out.flush()
 
 
-def test_serve_dist_dir_matches_launcher_zip_output():
-    """serve.py 扫描目录必须与 build-launcher.bat 的 ZIP 落点一致。"""
-    serve = _load_serve_module()
-    expected = str(Path(__file__).resolve().parents[1] / "packaging" / "dist")
-    assert serve.DIST_DIR.replace("/", "\\") == expected.replace("/", "\\")
-    bat = (Path(__file__).resolve().parents[1] / "packaging" / "build-launcher.bat").read_text(
-        encoding="utf-8"
-    )
-    assert 'LAUNCHER_ZIP=packaging\\dist\\QLH-Launcher-v' in bat
 
 
 def test_distribution_url_host_formats_ipv6():
@@ -208,13 +180,11 @@ def test_update_manifest_only_exposes_current_version_and_classifies_assets(tmp_
     assert manifest["schema_version"] == 1
     assert manifest["tag"] == "0.1.8.1"
     assert [item["name"] for item in manifest["assets"]] == [
-        current.name, full.name, launcher.name,
+        current.name, full.name,
     ]
     assert manifest["assets"][0]["variant"] == "cpu"
     assert manifest["assets"][0]["sha256"] == hashlib.sha256(b"current").hexdigest()
     assert manifest["assets"][1]["variant"] == "full"
-    assert manifest["assets"][2]["kind"] == "launcher"
-    assert manifest["assets"][2]["variant"] == "any"
 
 
 def test_update_manifest_classifies_launcher_setup_exe(tmp_path, monkeypatch):
@@ -230,11 +200,7 @@ def test_update_manifest_classifies_launcher_setup_exe(tmp_path, monkeypatch):
 
     manifest = serve.build_update_manifest(str(dist_dir))
 
-    by_name = {item["name"]: item for item in manifest["assets"]}
-    assert by_name[setup.name]["kind"] == "launcher-setup"
-    assert by_name[setup.name]["variant"] == "any"
-    assert by_name[setup.name]["platform"] == "windows"
-    assert by_name[bundle.name]["kind"] == "launcher"
+    assert manifest["assets"] == []
 
 
 def test_update_manifest_classifies_repair_index(tmp_path, monkeypatch):

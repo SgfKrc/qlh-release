@@ -1,3 +1,4 @@
+from pathlib import Path
 """
 单元测试 — 打包版 launcher 的 Tailscale 检测
 ===========================================
@@ -14,7 +15,7 @@ import pytest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CORE_ROOT = os.environ.get("QLH_CORE_ROOT", os.path.abspath(os.path.join(ROOT, "..", "qlh")))
-LAUNCHER_PATH = os.path.join(ROOT, "packaging", "launcher.py")
+LAUNCHER_PATH = str(Path(os.environ["QLH_CORE_ROOT"]) / "src" / "app_bootstrap.py")
 
 
 @pytest.fixture()
@@ -194,7 +195,7 @@ def test_startup_timeout_is_configurable_and_has_lower_bound(monkeypatch, launch
 
 
 def test_requested_launch_mode_supports_bjtu_aliases(launcher_module):
-    assert launcher_module._requested_launch_mode([]) == "launcher"
+    assert launcher_module._requested_launch_mode([]) == "tui"
     assert launcher_module._requested_launch_mode(["--ui"]) == "ui"
     assert launcher_module._requested_launch_mode(["--web"]) == "ui"
     assert launcher_module._requested_launch_mode(["--tui"]) == "tui"
@@ -202,11 +203,6 @@ def test_requested_launch_mode_supports_bjtu_aliases(launcher_module):
         launcher_module._requested_launch_mode(["--ui", "--tui"])
 
 
-def test_terminal_launcher_defaults_without_interactive_stdin(
-    monkeypatch, launcher_module,
-):
-    monkeypatch.setattr(launcher_module, "_has_interactive_stdin", lambda: False)
-    assert launcher_module._choose_terminal_launch_mode(default="tui") == "tui"
 
 
 def test_startup_failure_keeps_error_visible_for_windows_splash(
@@ -328,9 +324,9 @@ def test_qwen_runtime_dependency_is_declared_for_packaging():
         assert "'tiktoken'" in content
         assert "'tiktoken._tiktoken'" in content
         assert "'httpx'" in content
-        assert "'task_graph'" in content
-        assert "'task_journal'" in content
-        assert "'task_provider'" in content
+        assert "'task_graph'" not in content
+        assert "'recovery_journal'" in content
+        assert "'execution_provider'" in content
         assert "'task_worker_protocol'" in content
         assert "'task_worker_adapter'" in content
         assert "'_sqlite3'" in content

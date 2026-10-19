@@ -8,7 +8,6 @@
 
 支持分发:
 - PC 安装包: packaging/dist/*.exe（主应用，不含启动器）
-- QLH 启动器: packaging/dist/QLH-Launcher-Setup-v*.exe（安装包）+ QLH-Launcher-v*.zip（自更新资产）
 - Android 安装包: packaging/dist/*.apk / *.aab，或 android/app/build/outputs/**/*.apk / *.aab
 - 模型整合包（唯一维护路径）: build/offline-bundles/qlh-models-pc-v2.7z（PC）+ qlh-models-android-v2.7z（安卓）；生图资产由 Koakumix 独立维护
 
@@ -116,13 +115,9 @@ def _classify_update_asset(name: str) -> tuple[str, str, str, str] | None:
             repair_index.group("platform"), repair_index.group("variant"),
             "x86_64", "repair-index",
         )
-    if lower.endswith(".zip") and "qlh-launcher" in lower:
-        return "windows", "any", "x86_64", "launcher"
     if "qlh-models-" in lower and (
             lower.endswith(".7z") or _BUNDLE_VOLUME_RE.search(lower)):
         return "any", "any", "any", "model-bundle"
-    if lower.endswith(".exe") and "qlh-launcher-setup" in lower:
-        return "windows", "any", "x86_64", "launcher-setup"
     if lower.endswith(".exe") and "qlh-edge-inference-setup" in lower:
         return "windows", "cuda" if "cuda" in lower else "cpu", "x86_64", "installer"
     if lower.endswith((".apk", ".aab")) and "qlh-inference" in lower:
@@ -299,25 +294,6 @@ def _scan_pc_installers() -> list[tuple[str, str, str]]:
     return installers
 
 
-def _scan_launcher_assets() -> list[tuple[str, str, str]]:
-    """扫描 packaging/dist 内的 QLH 启动器资产（Setup 安装包 + 自更新 ZIP）。"""
-    assets: list[tuple[str, str, str]] = []
-    if not os.path.isdir(DIST_DIR):
-        return assets
-
-    for name in sorted(os.listdir(DIST_DIR), key=str.lower):
-        lower = name.lower()
-        if "qlh-launcher" not in lower:
-            continue
-        is_setup_exe = lower.endswith(".exe") and "setup" in lower
-        is_bundle_zip = lower.endswith(".zip")
-        if not (is_setup_exe or is_bundle_zip):
-            continue
-        item_path = os.path.join(DIST_DIR, name)
-        if not os.path.isfile(item_path):
-            continue
-        assets.append((name, "/" + quote(name), item_path))
-    return assets
 
 
 def _scan_dist_android_packages() -> list[tuple[str, str, str]]:
@@ -474,11 +450,6 @@ class QuietHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             for display, href, abs_path in _scan_pc_installers()
         ]
 
-        launcher_entries = [
-            (display, href, _format_size(abs_path))
-            for display, href, abs_path in _scan_launcher_assets()
-        ]
-
         android_entries = [
             (display, href, _format_size(abs_path))
             for display, href, abs_path in _scan_android_downloads()
@@ -498,7 +469,6 @@ class QuietHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             )
 
         pc_rows = render_rows(pc_entries, "暂无 PC 安装包（请先运行 build-installer.bat）")
-        launcher_rows = render_rows(launcher_entries, "暂无 QLH 启动器（请先运行 build-launcher.bat）")
         android_rows = render_rows(android_entries, "暂无 Android 安装包（请先运行 android/gradlew.bat assembleRelease）")
         bundle_rows = render_rows(
             bundle_entries,
@@ -529,11 +499,6 @@ class QuietHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     {pc_rows}
   </ul>
 
-  <h2>QLH 启动器</h2>
-  <ul>
-    {launcher_rows}
-  </ul>
-
   <h2>Android 安装包</h2>
   <ul>
     {android_rows}
@@ -547,7 +512,6 @@ class QuietHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
   <p class="hint">
     Android Release APK 默认路径: <code>android/app/build/outputs/apk/*/release/*.apk</code><br>
     PC 安装包默认路径: <code>packaging/dist/QLH-Edge-Inference-Setup-v*.exe</code><br>
-    启动器: <code>packaging/dist/QLH-Launcher-Setup-v*.exe</code>（安装）+ <code>QLH-Launcher-v*.zip</code>（自更新资产，供 <code>qlh_launcher.py launcher-install</code> 使用）<br>
     整合包由 scripts/build_offline_bundle.py 生成：PC 版为 4GB 分卷（.001-007，全量资产含 SD），
     安卓版为单卷（仅 GGUF，SAF 目录直接可用）；生图不属于 QLH 主项目。
   </p>
@@ -610,7 +574,6 @@ def main(argv: list[str] | None = None) -> None:
     ts_ip = _detect_tailscale_ip()
     android_packages = _scan_android_downloads()
     model_bundles = _scan_model_bundles()
-    launcher_assets = _scan_launcher_assets()
 
     print()
     print("=" * 55)
@@ -621,12 +584,6 @@ def main(argv: list[str] | None = None) -> None:
     print(f"  监听: http://{_url_host(HOST)}:{port}")
     print(f"  PC 安装包目录: {DIST_DIR}")
     print(f"  Android 输出目录: {ANDROID_OUTPUT_DIR}")
-    if launcher_assets:
-        print("  QLH 启动器:")
-        for display, href, abs_path in launcher_assets:
-            print(f"    {display} -> {href} ({_format_size(abs_path)})")
-    else:
-        print("  QLH 启动器: 未找到（请先运行 packaging/build-launcher.bat）")
     if android_packages:
         print("  Android 安装包:")
         for display, href, abs_path in android_packages:

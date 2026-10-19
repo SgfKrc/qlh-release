@@ -19,7 +19,7 @@ echo "QLH 边缘推理系统 — 卸载后清理..."
 
 # 移除 /usr/local/bin 符号链接（仅 remove/purge，upgrade 时保留）
 if [ "$1" != "upgrade" ] && [ "$1" != "failed-upgrade" ]; then
-    rm -f /usr/local/bin/qlh-launcher
+    rm -f /usr/local/bin/qlh-maintenance /usr/local/bin/qlh
     rm -f /usr/local/bin/bjtu
     rm -f "$ENV_PROFILE_FILE"
 fi

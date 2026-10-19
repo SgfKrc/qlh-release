@@ -7,7 +7,7 @@ a = Analysis(
     [os.path.join(SPECPATH, "data_retention.py")],
     pathex=[SPECPATH],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=["app_bootstrap", "app_maintenance",],
     hookspath=[],
     runtime_hooks=[],
     excludes=["torch", "transformers", "fastapi", "uvicorn"],

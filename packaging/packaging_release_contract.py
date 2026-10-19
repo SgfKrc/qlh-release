@@ -77,7 +77,7 @@ def load_release_contract(root: Path | None = None) -> dict[str, Any]:
 
 _SOURCE_CONTRACT = load_release_contract()
 PRODUCT_VERSION = str(_SOURCE_CONTRACT["version"]["product"])
-LAUNCHER_VERSION = str(_SOURCE_CONTRACT["version"]["launcher"])
+PRODUCT_VERSION = str(_SOURCE_CONTRACT["version"]["product"])
 
 
 def _node_config_path(environment: Mapping[str, str]) -> Path:

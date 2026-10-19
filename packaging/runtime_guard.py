@@ -3,7 +3,7 @@
 
 背景：安装包不再把 PyTorch/Transformers 等巨无霸打进包体（CPU ~734MB /
 CUDA ~13GB），改为「外部运行时依赖」：运行时放在用户目录的独立 venv，
-由引导器（qlh_launcher）每次启动时检查缺失模块，缺则 ``pip install``
+由引导器（app_maintenance）每次启动时检查缺失模块，缺则 ``pip install``
 （CPU 走 PyTorch CPU index，CUDA 走官方源），完成后用该 venv 的 python
 以源码方式启动主程序。这样安装包更新只换小包，不反复装卸大 PyTorch。
 
@@ -191,6 +191,7 @@ def ensure_runtime(
     *,
     runner: Callable[[list[str]], int] | None = None,
     create_venv: bool = True,
+    install_missing: bool = True,
 ) -> dict[str, Any]:
     """确保外部运行时就绪：定位 venv → probe → 缺失则（建 venv +）pip 安装。
 
@@ -207,7 +208,7 @@ def ensure_runtime(
     python = venv_python(target_venv)
 
     created = False
-    if not python.is_file() and create_venv:
+    if not python.is_file() and create_venv and install_missing:
         try:
             venv.EnvBuilder(with_pip=True).create(target_venv)
             created = True
@@ -219,6 +220,9 @@ def ensure_runtime(
             }
 
     missing = probe_missing(python, required_modules(ctx))
+    if missing and not install_missing:
+        return {"state": "missing", "python": str(python), "created": False, "missing_before": missing, "profile": profile}
+
     if not missing:
         return {
             "state": "ok", "python": str(python), "created": created,

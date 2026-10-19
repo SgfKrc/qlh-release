@@ -32,9 +32,8 @@ from update_core import (
     version_key,
 )
 from signing import default_trusted_keys_dir
-from launcher_slots import LauncherSlotError, LauncherSlotStore
 from version_store import VersionStore, VersionStoreError
-from packaging_release_contract import LAUNCHER_VERSION
+from packaging_release_contract import PRODUCT_VERSION
 
 DEFAULT_UPDATE_SOURCES = (
     "http://100.90.76.108:9090/latest.json",
@@ -46,7 +45,7 @@ DEFAULT_UPDATE_SOURCES = (
 
 
 def detect_current_version(
-    search_root: Path | None = None, *, fallback: str = LAUNCHER_VERSION,
+    search_root: Path | None = None, *, fallback: str = PRODUCT_VERSION,
 ) -> str:
     override = os.environ.get("QLH_CURRENT_VERSION", "").strip()
     if override:
@@ -149,7 +148,7 @@ def _result_for_manifest(
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
         "current_version": current_version,
-        "launcher_version": LAUNCHER_VERSION,
+        "application_version": PRODUCT_VERSION,
         "latest_version": manifest.tag,
         "channel": manifest.channel,
         "source": manifest.source_url,
@@ -183,23 +182,6 @@ def _result_for_manifest(
     return result
 
 
-def check_launcher_updates(
-    sources: list[str],
-    *,
-    profile: dict[str, str] | None = None,
-    current_version: str = LAUNCHER_VERSION,
-    timeout: float = 8.0,
-    trusted_keys_dir: str | None = None,
-) -> dict[str, Any]:
-    """Check the shared Launcher bundle without selecting an app variant."""
-    profile = profile or detect_profile()
-    manifest, failures = _manifest_for_request(
-        sources, timeout, trusted_keys_dir=trusted_keys_dir,
-    )
-    return _result_for_manifest(
-        manifest, failures, profile, current_version,
-        kind="launcher", asset_variant="any",
-    )
 
 
 def fetch_manifest_with_keys(
@@ -236,7 +218,7 @@ def _print(value: Any, *, as_json: bool) -> None:
         if value.get("downloaded"):
             print(f"已下载并校验: {value['downloaded']}")
             return
-        print(f"当前版本: {value.get('current_version', LAUNCHER_VERSION)}")
+        print(f"当前版本: {value.get('current_version', PRODUCT_VERSION)}")
         print(f"最新版本: {value.get('latest_version', '-')}")
         print("有可用更新" if value.get("update_available") else "当前已是最新版本")
         if value.get("asset_error"):
@@ -342,50 +324,10 @@ def _version_command(args: argparse.Namespace) -> int:
     raise VersionStoreError(f"unsupported version command: {args.command}")
 
 
-def _launcher_store(args: argparse.Namespace) -> LauncherSlotStore:
-    return LauncherSlotStore(args.launcher_store)
 
 
-def _launcher_health(path: Path) -> bool:
-    """Run the staged Launcher in an isolated, non-interactive health mode."""
-    marker = path / "health.ok"
-    if not marker.is_file() or not marker.read_text(encoding="utf-8", errors="replace").strip():
-        return False
-    candidates = (
-        path / "QLH-Launcher.exe",
-        path / "qlh-launcher.exe",
-        path / "qlh-launcher",
-        path / "qlh_launcher.py",
-    )
-    entrypoint = next((candidate for candidate in candidates if candidate.is_file()), None)
-    if entrypoint is None:
-        return False
-    command = (
-        [sys.executable, str(entrypoint), "--health-check"]
-        if entrypoint.suffix.lower() == ".py"
-        else [str(entrypoint), "--health-check"]
-    )
-    environment = os.environ.copy()
-    environment["QLH_LAUNCHER_ACTIVE_SLOT"] = "1"
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=str(path),
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=20,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return completed.returncode == 0
 
 
-def _launcher_current_version(store: LauncherSlotStore) -> str:
-    pointer = store.current()
-    return pointer.version if pointer is not None else LAUNCHER_VERSION
 
 
 def _require_verified_signature(manifest: UpdateManifest, args: argparse.Namespace) -> None:
@@ -409,7 +351,7 @@ def _diagnostic_output(args: argparse.Namespace) -> Path:
     if args.diagnostics_output:
         return Path(args.diagnostics_output).expanduser()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return default_state_dir() / "diagnostics" / f"qlh-launcher-{stamp}.zip"
+    return default_state_dir() / "diagnostics" / f"qlh-application-{stamp}.zip"
 
 
 def _diagnose_report_path(args: argparse.Namespace) -> Path | None:
@@ -420,114 +362,33 @@ def _diagnose_report_path(args: argparse.Namespace) -> Path | None:
     try:
         candidate.relative_to(allowed)
     except ValueError as exc:
-        raise LauncherSlotError("diagnose report must stay in the Launcher diagnostics directory") from exc
+        raise UpdateError("diagnose report must stay in the application diagnostics directory") from exc
     if candidate.suffix.lower() != ".json" or not candidate.is_file():
-        raise LauncherSlotError("diagnose report must be an existing JSON file")
+        raise UpdateError("diagnose report must be an existing JSON file")
     try:
         if candidate.stat().st_size > 1024 * 1024:
-            raise LauncherSlotError("diagnose report exceeds the 1 MiB limit")
+            raise UpdateError("diagnose report exceeds the 1 MiB limit")
     except OSError as exc:
-        raise LauncherSlotError("cannot read diagnose report") from exc
+        raise UpdateError("cannot read diagnose report") from exc
     return candidate
 
 
-def _launcher_command(
-    args: argparse.Namespace,
-    *,
-    sources: list[str] | None = None,
-    trusted_keys_dir: str | None = None,
-    progress: DownloadProgressCallback | None = None,
-) -> int:
-    store = _launcher_store(args)
-    try:
-        if args.command == "launcher-status":
-            _print(store.status(), as_json=args.as_json)
-            return 0
-        if args.command == "launcher-stage":
-            if not args.bundle or not args.version:
-                raise LauncherSlotError("launcher-stage requires --bundle --version")
-            bundle = Path(args.bundle).expanduser()
-            pointer = (
-                store.stage_directory(bundle, args.version)
-                if bundle.is_dir()
-                else store.stage_archive(bundle, args.version)
-            )
-            _print({"staged": pointer.as_dict()}, as_json=args.as_json)
-            return 0
-        if args.command == "launcher-activate":
-            if not args.version:
-                raise LauncherSlotError("launcher-activate requires --version")
-            pointer = store.activate(args.version, health_check=_launcher_health)
-            _print({"activated": pointer.as_dict()}, as_json=args.as_json)
-            return 0
-        if args.command == "launcher-rollback":
-            pointer = store.rollback(health_check=_launcher_health)
-            _print({"rolled_back": pointer.as_dict()}, as_json=args.as_json)
-            return 0
-        if args.command == "launcher-recover":
-            pointer = store.recover()
-            if pointer is None:
-                raise LauncherSlotError("no recoverable Launcher slot is available")
-            _print({"recovered": pointer.as_dict()}, as_json=args.as_json)
-            return 0
-        if args.command == "diagnostics":
-            report = _diagnose_report_path(args)
-            destination = store.diagnostics(
-                _diagnostic_output(args), extra_paths=[report] if report else None,
-            )
-            _print({"diagnostics": str(destination)}, as_json=args.as_json)
-            return 0
-        if args.command not in {"launcher-check", "launcher-download", "launcher-install"}:
-            raise LauncherSlotError(f"unsupported Launcher command: {args.command}")
-        if not sources:
-            raise LauncherSlotError("no update source configured")
-        profile = detect_profile(variant_override=args.variant)
-        manifest, failures = _manifest_for_request(
-            sources, args.timeout, trusted_keys_dir=trusted_keys_dir,
-        )
-        result = _result_for_manifest(
-            manifest, failures, profile, _launcher_current_version(store),
-            kind="launcher", asset_variant="any",
-        )
-        if args.command == "launcher-check":
-            _print(result, as_json=args.as_json)
-            return 3 if result.get("update_available") else 0
-        if not args.as_json:
-            _print(result, as_json=False)
-        asset = select_asset(
-            manifest, platform=profile["platform"], variant="any",
-            arch=profile["arch"], kind="launcher",
-        )
-        destination = args.download_dir or default_state_dir() / "downloads"
-        progress_callback = progress or (None if args.as_json else _console_download_progress)
-        path = download_asset(
-            asset, destination, timeout=max(30.0, args.timeout), progress=progress_callback,
-        )
-        if progress_callback is not None and not args.as_json:
-            print()
-        if args.command == "launcher-download":
-            _print({"downloaded": str(path), "source_failures": list(failures)}, as_json=args.as_json)
-            return 0
-        _require_verified_signature(manifest, args)
-        if not args.yes and not args.as_json:
-            answer = input(f"将替换活动 Launcher 为 {path.name}，继续？ [y/N] ").strip().lower()
-            if answer not in {"y", "yes"}:
-                return 1
-        staged = store.stage_archive(
-            path, manifest.tag, require_install_manifest=True,
-        )
-        pointer = store.activate(staged.version, health_check=_launcher_health)
-        _print(
-            {"launcher_updated": pointer.as_dict(), "path": str(path)},
-            as_json=args.as_json,
-        )
-        return 0
-    except (LauncherSlotError, UpdateError) as exc:
-        if isinstance(exc, UpdateError):
-            _print(_error_payload(exc), as_json=args.as_json)
-        else:
-            _print({"error": str(exc)}, as_json=args.as_json)
-        return 2
+
+
+def _diagnostics_bundle(args):
+    import re
+    import zipfile
+    destination = _diagnostic_output(args)
+    report = _diagnose_report_path(args)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("diagnostic.json", json.dumps({"schema_version": 2, "created_at": datetime.now(timezone.utc).isoformat(), "platform": os.name}))
+        if report:
+            text = report.read_text(encoding="utf-8")
+            for key in ("password", "secret", "token", "private_key", "authorization"):
+                text = re.sub(r'("?' + key + r'"?\s*[:=]\s*)("[^"\n]*"|[^,\s}]+)', r'\1"<redacted>"', text, flags=re.IGNORECASE)
+            archive.writestr("diagnosis/" + report.name, text)
+    return destination
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -538,9 +399,7 @@ def build_parser() -> argparse.ArgumentParser:
             "check", "download", "install",
             "version-status", "version-stage", "version-activate",
             "version-rollback", "version-recover",
-            "launcher-status", "launcher-check", "launcher-download",
-            "launcher-install", "launcher-stage", "launcher-activate",
-            "launcher-rollback", "launcher-recover", "diagnostics",
+            "diagnostics",
         ),
     )
     parser.add_argument("--source", action="append", help="manifest URL; may be repeated")
@@ -549,7 +408,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=float, default=8.0)
     parser.add_argument("--trusted-keys-dir", help="pubkeys directory for manifest verification")
     parser.add_argument("--version-store", help="UP-N3 version store directory")
-    parser.add_argument("--launcher-store", help="UP-N4 Launcher A/B store directory")
     parser.add_argument("--bundle", help="directory or zip/tar bundle for version-stage")
     parser.add_argument("--version", help="application version for UP-N3 operations")
     parser.add_argument("--diagnostics-output", help="ZIP path for the redacted diagnostic bundle")
@@ -571,12 +429,14 @@ def main(
     args = build_parser().parse_args(argv)
     if args.command.startswith("version-"):
         return _version_command(args)
-    local_launcher_commands = {
-        "launcher-status", "launcher-stage", "launcher-activate",
-        "launcher-rollback", "launcher-recover", "diagnostics",
-    }
-    if args.command in local_launcher_commands:
-        return _launcher_command(args)
+    if args.command == "diagnostics":
+        try:
+            path = _diagnostics_bundle(args)
+            _print({"diagnostics": str(path)}, as_json=args.as_json)
+            return 0
+        except UpdateError as exc:
+            _print(_error_payload(exc), as_json=args.as_json)
+            return 2
     trusted_keys_dir = args.trusted_keys_dir or default_trusted_keys_dir()
     sources = configured_sources(args.source)
     if not sources:
@@ -585,11 +445,6 @@ def main(
         return 2
     profile = detect_profile(variant_override=args.variant)
     try:
-        if args.command in {"launcher-check", "launcher-download", "launcher-install"}:
-            return _launcher_command(
-                args, sources=sources, trusted_keys_dir=trusted_keys_dir,
-                progress=progress,
-            )
         if args.command == "check":
             result = check_updates(
                 sources, profile=profile, timeout=args.timeout,

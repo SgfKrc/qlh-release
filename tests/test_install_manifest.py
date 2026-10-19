@@ -13,7 +13,6 @@ if str(PACKAGING_DIR) not in sys.path:
 
 import install_manifest
 import signing
-from launcher_slots import LauncherSlotError, LauncherSlotStore
 from version_store import VersionStore, VersionStoreError
 
 
@@ -206,44 +205,8 @@ def test_install_manifest_rejects_case_colliding_includes(tmp_path):
         )
 
 
-def _launcher_tree(root: Path, keyring, *, version: str = "0.1.8.1") -> Path:
-    root.mkdir()
-    (root / "QLH-Launcher.exe").write_bytes(b"launcher")
-    (root / "health.ok").write_text("healthy", encoding="utf-8")
-    (root / "version.txt").write_text(f"{version}\n", encoding="utf-8")
-    shutil.copytree(keyring["pubkeys"], root / "pubkeys")
-    _write_signed(
-        root,
-        keyring,
-        app_id="qlh-launcher",
-        version=version,
-        variant="any",
-        package_kind="launcher",
-    )
-    return root
 
 
-def test_launcher_staging_requires_signed_manifest_and_matching_version(
-    tmp_path, install_keyring,
-):
-    bundle = _launcher_tree(tmp_path / "launcher", install_keyring)
-    store = LauncherSlotStore(tmp_path / "slots")
-    staged = store.stage_directory(
-        bundle, "0.1.8.1", require_install_manifest=True,
-    )
-    assert staged.version == "0.1.8.1"
-
-    missing = tmp_path / "legacy"
-    missing.mkdir()
-    (missing / "QLH-Launcher.exe").write_bytes(b"legacy")
-    with pytest.raises(LauncherSlotError, match="no signed install-manifest"):
-        LauncherSlotStore(tmp_path / "missing-store").stage_directory(
-            missing, "0.1.8.1", require_install_manifest=True,
-        )
-    with pytest.raises(LauncherSlotError, match="version mismatch"):
-        LauncherSlotStore(tmp_path / "wrong-version-store").stage_directory(
-            bundle, "0.1.8.2", require_install_manifest=True,
-        )
 
 
 def test_application_version_store_rejects_signed_identity_mismatch(
@@ -382,15 +345,6 @@ def test_runtime_verify_reports_missing_hash_and_health_failures(tmp_path, insta
         for item in hashed["failed"]
     )
 
-    launcher_root = _launcher_tree(tmp_path / "launcher-verify", install_keyring)
-    (launcher_root / "health.ok").unlink()
-    health = install_manifest.verify_install_tree(
-        launcher_root, trusted_keys_dir=install_keyring["pubkeys"],
-    )
-    assert any(
-        item["path"] == "health.ok" and item["category"] == "missing"
-        for item in health["failed"]
-    )
 
 
 def test_runtime_full_sampling_is_explicit_and_deep_detects_large_file_tamper(
@@ -442,7 +396,7 @@ def test_runtime_verify_signature_failure_and_json_cli_exit_code(tmp_path, insta
 
 def test_release_build_entrypoints_require_and_package_signed_baseline():
     project = PACKAGING_DIR.parent
-    for name in ("build-cpu.bat", "build-cuda.bat", "build-launcher.bat"):
+    for name in ("build-cpu.bat", "build-cuda.bat"):
         text = (PACKAGING_DIR / name).read_text(encoding="utf-8")
         assert "QLH_SIGNING_KEY" in text
         assert "install_manifest.py build" in text
@@ -462,10 +416,7 @@ def test_release_build_entrypoints_require_and_package_signed_baseline():
     assert '--level deep' in linux_postinst
     assert 'manifest/install-manifest.json' in linux_postinst
 
-    launcher_setup = (PACKAGING_DIR / "setup-launcher.iss").read_text(encoding="utf-8")
-    assert 'Source: "{#MySourceDir}\\*"' in launcher_setup
-    assert 'Source: "version.txt"' not in launcher_setup
-    for name in ("setup.iss", "setup-cuda.iss", "setup-launcher.iss"):
+    for name in ("setup.iss", "setup-cuda.iss"):
         setup = (PACKAGING_DIR / name).read_text(encoding="utf-8")
         assert "QLH-Install-Manifest.exe" in setup
         assert "RaiseException" in setup
@@ -494,8 +445,6 @@ def test_release_build_entrypoints_require_and_package_signed_baseline():
         assert "{localappdata}\\QLH-Edge-Inference\\data" in setup
         assert "DelTree(ExpandConstant('{app}\\models')" not in setup
         assert "[UninstallDelete]" not in setup
-    launcher_setup = (PACKAGING_DIR / "setup-launcher.iss").read_text(encoding="utf-8")
-    assert "install-manifest.json" in launcher_setup
     linux_prerm = (PACKAGING_DIR / "linux" / "prerm").read_text(encoding="utf-8")
     linux_postinst = (PACKAGING_DIR / "linux" / "postinst").read_text(encoding="utf-8")
     assert 'RETENTION_TOOL="$APP_DIR/bin/data_retention.py"' in linux_prerm

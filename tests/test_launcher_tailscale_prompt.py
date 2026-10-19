@@ -9,7 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 
-LAUNCHER_PATH = Path(__file__).resolve().parents[1] / "packaging" / "launcher.py"
+LAUNCHER_PATH = Path(__file__).resolve().parents[2] / "src" / "app_bootstrap.py"
 NO_TAILSCALE = {
     "installed": False,
     "running": False,

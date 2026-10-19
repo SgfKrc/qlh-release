@@ -2,7 +2,7 @@
 # QLH 外部运行时依赖（CUDA 版）— 安装包不携带，由启动器每次启动检查并 pip 引导
 # ============================================================
 # 与 CPU 版差别仅在 torch 安装源：CUDA 走官方默认源（torch 二进制带 CUDA），
-# 由 qlh_launcher 在 engine=cuda 时自动安装：
+# 由 app_maintenance 在 engine=cuda 时自动安装：
 #   python -m pip install -r requirements-runtime-cuda.txt
 # 升级运行时只 pip upgrade，不重装安装包。
 

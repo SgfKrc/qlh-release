@@ -258,7 +258,7 @@ def test_git_free_export_has_named_failure_even_with_environment_revision(tmp_pa
     assert not (exported / "build").exists()
 
 
-@pytest.mark.parametrize("name", ["build-cpu.bat", "build-launcher.bat"])
+@pytest.mark.parametrize("name", ["build-cpu.bat"])
 def test_windows_entrypoints_snapshot_before_build_and_stage_before_signing(name):
     raw = (PACKAGING / name).read_bytes()
     assert raw.count(b"\r\n") > 0 and b"\n" not in raw.replace(b"\r\n", b"")

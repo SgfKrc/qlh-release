@@ -150,7 +150,7 @@ a = Analysis(
         (os.path.join(_GEMMA4_SITE_PACKAGES, 'llama_cpp', _GEMMA4_BINDING_MARKER), 'llama_cpp'),
         (os.path.join(_PROJECT_ROOT, 'scripts', 'model_tools', 'gemma4_native_binding.lock.json'), 'scripts/model_tools'),
     ] + _SUPPLY_DATAS,
-    hiddenimports=[
+    hiddenimports=["app_bootstrap", "app_maintenance",
         # ============================================================
         # llama.cpp 引擎（CPU/集显推理）
         # ============================================================
@@ -228,9 +228,8 @@ a = Analysis(
         # 本地存储（DB 不可用时自动降级）
         # ============================================================
         'local_store',
-        'task_graph',
-        'task_journal',
-        'task_provider',
+        'recovery_journal',
+        'execution_provider',
         'task_worker_protocol',
         'task_worker_adapter',
         'sqlite3',
@@ -239,7 +238,6 @@ a = Analysis(
         # ============================================================
         # 智能编排
         # ============================================================
-        'graph_orchestrator',
 
         # ============================================================
         # 工具

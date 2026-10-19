@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "packaging"))
 
-import qlh_launcher as launcher  # noqa: E402
+import app_maintenance as launcher  # noqa: E402
 import runtime_guard as guard  # noqa: E402
 
 
@@ -97,4 +97,4 @@ def test_runtime_app_command_uses_bundled_profile(tmp_path, monkeypatch):
     command = launcher.runtime_app_command(root)
 
     assert seen["profile"] == "llama_cpp_only"
-    assert command is not None and "src.api_server:app" in command
+    assert command is not None and "src/app_bootstrap.py" in command

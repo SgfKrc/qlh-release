@@ -7,7 +7,7 @@
 |---|---|---|---|---|---|
 | `qlh-cpu.spec`  | `launcher.py`    | ✅ 冻结 | ✅ 打进 | 必需 | ~722MB |
 | `qlh-cuda.spec` | `launcher.py`    | ✅ 冻结 | ✅ CUDA | 必需 | ~12.5GB |
-| `qlh-slim.spec` | `qlh_launcher.py` | ❌ 只带引导器（源码以 data 形式随包，运行时靠外部 venv 跑） | ❌ | ❌ | ~42MB |
+| `qlh-slim.spec` | `app_maintenance.py` | ❌ 只带引导器（源码以 data 形式随包，运行时靠外部 venv 跑） | ❌ | ❌ | ~42MB |
 | **本 spec**     | `launcher.py`    | ✅ 冻结 | ❌ 排除 | ❌ | 介于两者之间 |
 
 ★ 2026-10-03：按产品基线惯例，发行物应是「**免安装的 PyInstaller 目录 + Inno Setup 6
@@ -103,7 +103,7 @@ a = Analysis(
     pathex=[_SRC_DIR, SPECPATH],
     binaries=_llama_cpp_native,
     datas=_datas,
-    hiddenimports=[
+    hiddenimports=["app_bootstrap", "app_maintenance",
         # ---- llama.cpp 引擎（边缘档唯一推理引擎）----
         "llama_cpp",
         "llama_cpp._internals",
@@ -135,16 +135,14 @@ a = Analysis(
 
         # ---- 本地存储（DB 不可用时自动降级）----
         "local_store",
-        "task_graph",
-        "task_journal",
-        "task_provider",
+        "recovery_journal",
+        "execution_provider",
         "task_worker_protocol",
         "task_worker_adapter",
         "sqlite3",
         "_sqlite3",
 
         # ---- 智能编排 ----
-        "graph_orchestrator",
 
         # ---- 管理界面（TUI，产品界面以此为准）----
         # `launcher.py` 的 `_run_tui()` 在服务就绪后 `from tui_textual import main`；
@@ -178,7 +176,7 @@ a = Analysis(
         "test",
         "pydoc",
         # ★ 边缘档的核心差别：不装 PyTorch 系。它们只能由**外部 runtime venv** 提供
-        #   （`qlh_launcher` + `runtime_guard` 那条路），或者干脆不提供 —— 边缘档的
+        #   （`app_maintenance` + `runtime_guard` 那条路），或者干脆不提供 —— 边缘档的
         #   推理走 llama.cpp。`api_server` 对它们的依赖是惰性的（见文件头）。同时
         #   `pywebview` / 前端相关也排除（前端已停止维护）。
         "torch",

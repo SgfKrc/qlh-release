@@ -7,7 +7,7 @@ a = Analysis(
     [os.path.join(SPECPATH, "install_manifest.py")],
     pathex=[SPECPATH],
     datas=[],
-    hiddenimports=[
+    hiddenimports=["app_bootstrap", "app_maintenance",
         "cryptography",
         "cryptography.hazmat.primitives.asymmetric.ed25519",
     ],

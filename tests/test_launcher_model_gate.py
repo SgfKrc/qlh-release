@@ -9,7 +9,7 @@ for _path in (ROOT / "packaging", ROOT / "src"):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
-import launcher  # noqa: E402
+import app_bootstrap as launcher  # noqa: E402
 
 
 def test_model_asset_check_is_nonblocking_when_no_model_is_installed(monkeypatch):

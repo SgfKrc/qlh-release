@@ -16,7 +16,6 @@ def test_packaging_versions_match_canonical_contract() -> None:
         (CORE_ROOT / "release-contract.json").read_text(encoding="utf-8")
     )
     assert release_contract.PRODUCT_VERSION == contract["version"]["product"]
-    assert release_contract.LAUNCHER_VERSION == contract["version"]["launcher"]
 
 
 def test_child_environment_uses_confirmed_role_and_fixed_product_profile(
@@ -45,7 +44,7 @@ def test_child_environment_uses_confirmed_role_and_fixed_product_profile(
     assert env["QLH_RELEASE_PROFILE_ENFORCE"] == "1"
     assert env["QLH_ROUTE_A_STAGE_OFFER"] == "1"
     assert env["QLH_TASK_WORKER_EXPERIMENTAL_ENABLED"] == "1"
-    assert env["QLH_TASK_GRAPH_ENABLED"] == "0"
+    assert "QLH_TASK_GRAPH_ENABLED" not in release_contract.load_release_contract()["profile"]["fixed_environment"]
 
 
 def test_child_environment_defaults_to_packaged_master(tmp_path: Path) -> None:

@@ -2,7 +2,7 @@
 # QLH 外部运行时依赖（CPU 版）— 安装包不携带，由启动器每次启动检查并 pip 引导
 # ============================================================
 # 瘦身包只含 轻量引导器 + src + 前端 + 清单；PyTorch 系在此清单内，由
-# qlh_launcher 收到缺失时自动安装：
+# app_maintenance 收到缺失时自动安装：
 #   python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 #   python -m pip install -r requirements-runtime-cpu.txt   # 其余走默认 PyPI
 # 注意：torch 不在本文件内（CPU 必须从 PyTorch CPU index 单独安装；若放进 -r

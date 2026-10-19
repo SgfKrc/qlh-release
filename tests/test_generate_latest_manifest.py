@@ -59,7 +59,7 @@ def test_generates_signs_verifies_and_writes_manifest(tmp_path):
         generated_at="2026-08-12T00:00:00+00:00",
     )
     assert manifest["tag"] == "0.1.8.2"
-    assert [asset["kind"] for asset in manifest["assets"]] == ["installer", "launcher"]
+    assert [asset["kind"] for asset in manifest["assets"]] == ["installer"]
     signed = generator.sign_and_verify_manifest(
         manifest, private_key_path=release_key, trusted_keys_dir=pubkeys,
     )
@@ -75,7 +75,7 @@ def test_generates_signs_verifies_and_writes_manifest(tmp_path):
 
 
 def test_rejects_asset_without_github_sha256_digest():
-    release = _release(_asset("QLH-Launcher-v0.1.8.2.zip"))
+    release = _release(_asset("QLH-Edge-Inference-Setup-v0.1.8.2.exe"))
     release["assets"][0]["digest"] = ""
 
     with pytest.raises(generator.ManifestGenerationError, match="SHA-256"):
@@ -84,8 +84,8 @@ def test_rejects_asset_without_github_sha256_digest():
 
 def test_rejects_duplicate_update_targets():
     release = _release(
-        _asset("QLH-Launcher-v0.1.8.2.zip"),
-        _asset("QLH-Launcher-v0.1.8.2-backup.zip", digest="b" * 64),
+        _asset("QLH-Edge-Inference-Setup-v0.1.8.2.exe"),
+        _asset("QLH-Edge-Inference-Setup-v0.1.8.2-backup.exe", digest="b" * 64),
     )
 
     with pytest.raises(generator.ManifestGenerationError, match="same update target"):
@@ -95,11 +95,11 @@ def test_rejects_duplicate_update_targets():
 def test_rejects_draft_or_mismatched_release():
     with pytest.raises(generator.ManifestGenerationError, match="draft"):
         generator.build_manifest_from_release(
-            _release(_asset("QLH-Launcher-v0.1.8.2.zip"), draft=True),
+            _release(_asset("QLH-Edge-Inference-Setup-v0.1.8.2.exe"), draft=True),
             tag="0.1.8.2",
         )
     with pytest.raises(generator.ManifestGenerationError, match="does not match"):
         generator.build_manifest_from_release(
-            _release(_asset("QLH-Launcher-v0.1.8.2.zip"), tag="0.1.8.3"),
+            _release(_asset("QLH-Edge-Inference-Setup-v0.1.8.2.exe"), tag="0.1.8.3"),
             tag="0.1.8.2",
         )

@@ -1,4 +1,4 @@
-"""打包瘦身：qlh_launcher 瘦身包识别、外部 runtime 引导命令与 --runtime-check 入口测试。
+"""打包瘦身：app_maintenance 瘦身包识别、外部 runtime 引导命令与 --runtime-check 入口测试。
 
 monkeypatch 隔离全局状态与 runtime_guard，不触碰真实用户 runtime / 不执行 pip。
 """
@@ -16,7 +16,7 @@ for _p in (str(ROOT), str(ROOT / "packaging"), str(ROOT / "src")):
         sys.path.insert(0, _p)
 
 import runtime_guard as rg  # noqa: E402
-import qlh_launcher as ql  # noqa: E402
+import app_maintenance as ql  # noqa: E402
 
 
 def _slim_tree(tmp_path) -> Path:
@@ -60,13 +60,12 @@ def test_slim_src_root_none_without_src(tmp_path):
     assert ql._slim_src_root(tmp_path) is None
 
 
-def test_runtime_app_command_returns_uvicorn(monkeypatch, tmp_path):
+def test_runtime_app_command_returns_application_bootstrap(monkeypatch, tmp_path):
     tree = _slim_tree(tmp_path)
     monkeypatch.setattr(rg, "ensure_runtime", lambda ctx: {"state": "installed"})
     cmd = ql.runtime_app_command(tree, engine="cpu")
     assert cmd is not None
-    assert "-m" in cmd and "uvicorn" in cmd and "src.api_server:app" in cmd
-    assert "--host" in cmd and "0.0.0.0" in cmd and "--port" in cmd and "8000" in cmd
+    assert cmd[-1] == "src/app_bootstrap.py"
     # engine=cuda 时 requirements 指向 cuda
     seen = []
     def spy(ctx):
@@ -86,7 +85,7 @@ def test_runtime_app_command_supports_llama_cpp_only_profile(monkeypatch, tmp_pa
         return {"state": "ok", "profile": ctx.profile}
     monkeypatch.setattr(rg, "ensure_runtime", spy)
     cmd = ql.runtime_app_command(tree, engine="cpu", profile="llama_cpp_only")
-    assert "uvicorn" in cmd
+    assert "src/app_bootstrap.py" in cmd
     assert seen == [("llama_cpp_only", "requirements-runtime-llama_cpp_only.txt")]
 
 
@@ -108,8 +107,8 @@ def test_app_command_slim_branch(monkeypatch, tmp_path):
     monkeypatch.setattr(ql, "installed_app_root", lambda *a, **k: tree)
     monkeypatch.setattr(ql, "auto_reassociate_user_data", lambda root: None)
     monkeypatch.setattr(rg, "ensure_runtime", lambda ctx: {"state": "ok"})
-    cmd = ql.app_command("serve")
-    assert "uvicorn" in cmd and "src.api_server:app" in cmd
+    cmd = ql.app_command("headless")
+    assert "src/app_bootstrap.py" in cmd and "--headless" in cmd
 
 
 def test_app_command_slim_raises_on_runtime_missing(monkeypatch, tmp_path):
@@ -118,7 +117,7 @@ def test_app_command_slim_raises_on_runtime_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(ql, "auto_reassociate_user_data", lambda root: None)
     monkeypatch.setattr(rg, "ensure_runtime", lambda ctx: {"state": "failed"})
     with pytest.raises(FileNotFoundError):
-        ql.app_command("serve")
+        ql.app_command("headless")
 
 
 def test_launch_app_uses_internal_cwd_for_slim(monkeypatch, tmp_path):
@@ -133,9 +132,9 @@ def test_launch_app_uses_internal_cwd_for_slim(monkeypatch, tmp_path):
             command=command, cwd=cwd, env=env,
         ),
     )
-    ql.launch_app("serve")
+    ql.launch_app("headless")
     assert str(captured["cwd"]).endswith(("_internal", "_internal\\", "_internal/"))
-    assert "8000" in captured["command"] and "0.0.0.0" in captured["command"]
+    assert captured["command"][-1] == "--headless"
     assert captured["env"]["QLH_RELEASE_PROFILE_ENFORCE"] == "1"
     assert captured["env"]["QLH_NODE_ROLE"] in {"master", "client", "auto"}
 

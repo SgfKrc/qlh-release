@@ -115,7 +115,7 @@ def test_source_application_and_slim_bootstrap_are_different_entrypoints():
     # Artifact code in the external venv executes the shipped script with that
     # venv's Python; --qlh-cut-layers is for frozen main-engine launchers only.
     slim = (PACKAGING / "qlh-slim.spec").read_text(encoding="utf-8")
-    assert '"qlh_launcher.py"' in slim
+    assert '"slim_entry.py"' in slim
     for name in ("qlh-edge.spec", "qlh-cpu.spec", "qlh-cuda.spec"):
         assert "launcher.py" in (PACKAGING / name).read_text(encoding="utf-8")
 

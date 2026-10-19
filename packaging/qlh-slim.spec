@@ -7,12 +7,12 @@
 `qlh-shell` 仓不再是本包的构建前置。
 
 产物只含：
-  - QLH-Edge-Inference.exe：轻量引导器（qlh_launcher.py，不 import 推理运行时）
+  - QLH-Edge-Inference.exe：轻量引导器（app_maintenance.py，不 import 推理运行时）
   - _internal/src/            ：主程序源码（运行时由外部 venv python 以源码方式运行）
   - _internal/packaging/      ：外部运行时依赖清单（llama_cpp_only/cpu/cuda）
   - _internal/pubkeys         ：验签公钥
 PyTorch / Transformers / llama.cpp / FastAPI / uvicorn 等全部从包体**排除**，
-由 qlh_launcher 每次启动用 runtime_guard 检查外部 runtime venv，缺失则
+由 app_maintenance 每次启动用 runtime_guard 检查外部 runtime venv，缺失则
 pip 引导（CPU --index-url .../whl/cpu；CUDA 官方默认），再用该 venv python
 以 src 源码方式跑 uvicorn。体积从 ~734MB(CPU)/~1.7GB-13GB(CUDA) 降到几乎
 仅引导器 + 源码（几十 MB），安装包更新不重装大 PyTorch。
@@ -74,24 +74,22 @@ if not os.path.isdir(_SRC_DIR):
     )
 
 a = Analysis(
-    [os.path.join(SPECPATH, "qlh_launcher.py")],
+    [os.path.join(SPECPATH, "slim_entry.py")],
     pathex=[SPECPATH, _ROOT],
     datas=[
         (_ICO, "."),
         (_PUBKEYS, "pubkeys"),
         (_RELEASE_CONTRACT, "."),
     ] + _RUNTIME_REQS + _SUPPLY_DATAS,
-    hiddenimports=[
-        "tkinter",
-        "tkinter.ttk",
+    hiddenimports=["app_bootstrap", "app_maintenance",
+
         "cryptography",
         "cryptography.hazmat.primitives.asymmetric.ed25519",
-        "launcher_slots",
     ],
     hookspath=[],
     runtime_hooks=[],
     excludes=[
-        # 重量级推理运行时：全部移到外部 runtime venv，由 qlh_launcher 引导安装
+        # 重量级推理运行时：全部移到外部 runtime venv，由 app_maintenance 引导安装
         "torch", "torchvision", "torchaudio",
         "transformers", "accelerate", "bitsandbytes",
         "llama_cpp", "fastapi", "uvicorn", "pywebview",

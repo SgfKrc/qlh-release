@@ -13,7 +13,7 @@ a = Analysis(
     pathex=[_SRC_DIR, SPECPATH],
     binaries=[],
     datas=[],
-    hiddenimports=[
+    hiddenimports=["app_bootstrap", "app_maintenance",
         'webview',
         'webview.platforms.edgechromium',
         'webview.guilib',
