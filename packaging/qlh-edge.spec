@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""QLH 边缘 CPU 版（EDGE CPU）：**冻结主引擎**，但不含 PyTorch 系。
+"""QLH TUI 发行包：默认边缘 CPU，QLH_EDGE_FREEZE_TORCH=1 冻结 CUDA PyTorch。
 
 ## 与相邻两个 spec 的分工
 
@@ -8,7 +8,7 @@
 | `qlh-cpu.spec`  | `launcher.py`    | ✅ 冻结 | ✅ 打进 | 必需 | ~722MB |
 | `qlh-cuda.spec` | `launcher.py`    | ✅ 冻结 | ✅ CUDA | 必需 | ~12.5GB |
 | `qlh-slim.spec` | `app_maintenance.py` | ❌ 只带引导器（源码以 data 形式随包，运行时靠外部 venv 跑） | ❌ | ❌ | ~42MB |
-| **本 spec**     | `launcher.py`    | ✅ 冻结 | ❌ 排除 | ❌ | 介于两者之间 |
+| **本 spec**     | `launcher.py`    | ✅ 冻结 | 默认排除；显式CUDA档冻结 | ❌ | 按CPU／CUDA依赖闭包 |
 
 ★ 2026-10-03：按产品基线惯例，发行物应是「**免安装的 PyInstaller 目录 + Inno Setup 6
 安装包**」，且打的是**主引擎**（`launcher.py` 直接 `from api_server import run_api_servers`），
@@ -20,6 +20,8 @@
 `.venv-edge` 里 `import api_server` **0.80s 成功**，且 `torch` 未进 `sys.modules`
 ⇒ 排除 torch 不会让主引擎在导入期崩，只会让"需要 PyTorch 引擎"的路径在**用到时**明确
 失败（那是正确行为：边缘档本就不提供该引擎）。
+
+显式`QLH_EDGE_FREEZE_TORCH=1`时，复用同一TUI及keep-head原生闭包，冻结CUDA PyTorch与转换依赖，并按`torch_cuda`扫描；默认0按`llama_cpp_only`扫描。
 
 **前端**：`frontend_cybergothic` 已停止维护，产品以 TUI 为准
 （`qlh-slim.spec` 的文件头 2026-09-30 起即已声明），本 spec 不依赖它，也不需要
@@ -39,6 +41,22 @@ _PROJECT_ROOT = os.environ.get(
 _SRC_DIR = os.path.join(_PROJECT_ROOT, "src")
 _RELEASE_CONTRACT = os.path.join(_PROJECT_ROOT, "release-contract.json")
 
+# Freeze the same TUI product with CUDA PyTorch when explicitly requested.
+# The source-only/CPU package keeps its existing dependency closure.
+_torch_choice = os.environ.get("QLH_EDGE_FREEZE_TORCH", "0")
+if _torch_choice not in {"0", "1"}:
+    raise ValueError("QLH_EDGE_FREEZE_TORCH must be 0 or 1")
+_FREEZE_TORCH = _torch_choice == "1"
+if _FREEZE_TORCH:
+    import torch as _torch
+    if not getattr(_torch.version, "cuda", None):
+        raise RuntimeError("CUDA TUI packaging requires a CUDA-enabled PyTorch build")
+_BUNDLE_NAME = "QLH-Edge-Inference-CUDA" if _FREEZE_TORCH else "QLH-Edge-Inference"
+_TORCH_IMPORTS = ["model_module", "torch", "transformers", "transformers.models.auto",
+    "transformers.models.qwen2.modeling_qwen2", "transformers.models.qwen3_5.modeling_qwen3_5",
+    "accelerate", "safetensors", "tokenizers", "sentencepiece", "huggingface_hub", "einops"] if _FREEZE_TORCH else []
+
+
 # MODEL-SUPPLY-01: explicit data + dependency closure for offline GGUF cutting.
 sys.path.insert(0, SPECPATH)
 from keep_head_resources import collect_keep_head_binaries
@@ -49,7 +67,7 @@ from model_supply_resources import collect_model_supply_resources
 # into the shared bundle root, where they collide with pip's same-name ggml DLLs.
 _KEEP_HEAD_BINARIES = collect_keep_head_binaries(_PROJECT_ROOT)
 
-_SUPPLY_DATAS, _SUPPLY_IMPORTS = collect_model_supply_resources(_PROJECT_ROOT)
+_SUPPLY_DATAS, _SUPPLY_IMPORTS = collect_model_supply_resources(_PROJECT_ROOT, freeze_conversion=_FREEZE_TORCH)
 
 # 受管 llama-quantize（模型工具链）—— 可选：缺失时只跳过该工具，不阻断主引擎打包。
 sys.path.insert(0, _PROJECT_ROOT)
@@ -165,7 +183,7 @@ a = Analysis(
 
         # ---- 标准库 ----
         "asyncio",
-    ] + _SUPPLY_IMPORTS,
+    ] + _SUPPLY_IMPORTS + _TORCH_IMPORTS,
     hookspath=[],
     runtime_hooks=[],
     excludes=[
@@ -179,21 +197,15 @@ a = Analysis(
         #   （`app_maintenance` + `runtime_guard` 那条路），或者干脆不提供 —— 边缘档的
         #   推理走 llama.cpp。`api_server` 对它们的依赖是惰性的（见文件头）。同时
         #   `pywebview` / 前端相关也排除（前端已停止维护）。
-        "torch",
         "torchvision",
         "torchaudio",
-        "transformers",
-        "transformers_stream_generator",
-        "accelerate",
-        "bitsandbytes",
-        "einops",
-        "tiktoken",
         "webview",
         "pandas",
         "matplotlib",
         "IPython",
         "jedi",
-    ],
+    ] + ([] if _FREEZE_TORCH else ["torch", "transformers", "transformers_stream_generator",
+        "accelerate", "bitsandbytes", "einops", "tiktoken"]),
 )
 
 pyz = PYZ(a.pure, a.zipped_data)
@@ -204,7 +216,7 @@ exe = EXE(
     [],                    # ★ onedir: 二进制 DLL 不嵌入 EXE（由 COLLECT 放入 _internal/）
     [],                    # ★ onedir: 数据文件不嵌入 EXE
     [],
-    name="QLH-Edge-Inference",
+    name=_BUNDLE_NAME,
     icon="leds.ico",
     # ★ 2026-10-03：**必须 console=True**。产品界面是 **TUI**（Textual），它需要真实的
     #   控制台 —— 此前沿用 GUI 应用的 `console=False`，从这种 exe 里起 TUI 会以
@@ -225,5 +237,5 @@ coll = COLLECT(
     _KEEP_HEAD_BINARIES,
     strip=False,
     upx=False,
-    name="QLH-Edge-Inference",
+    name=_BUNDLE_NAME,
 )

@@ -26,6 +26,7 @@ REQUIRED_EXPORTS = {
         "qlh_kh_load", "qlh_kh_forward", "qlh_kh_forward_embd",
         "qlh_kh_forward_embd_seq", "qlh_kh_reset", "qlh_kh_n_embd",
         "qlh_kh_n_layer", "qlh_kh_close",
+        "qlh_kh_model_bytes", "qlh_kh_context_size", "qlh_kh_batch_size",
     },
     "libllama.dll": {
         "llama_set_embeddings_layer_inp", "llama_get_embeddings_layer_inp",

@@ -155,3 +155,20 @@ class TestScanBundleEndToEnd:
         assert report["ok"] is True
         assert report["violation_count"] == 0
         assert isinstance(report["violations"], list)
+
+
+@pytest.mark.parametrize("name", ["cudart64_12.dll", "cublas64_12.dll", "libcudart.so.12"])
+def test_explicit_cuda_profile_accepts_required_cuda_native_closure(name):
+    assert scan.classify_path(Path("_internal/torch/lib") / name, "torch_cuda") is None
+    assert scan.forbidden_import(name, "torch_cuda") is None
+
+
+@pytest.mark.parametrize("profile", ["llama_cpp_only", "torch_cpu", "torch_cuda"])
+def test_profile_never_allows_our_development_residue(profile):
+    assert scan.classify_path(Path("src/conftest.py"), profile)[0] == "dev_residue"
+    assert scan.classify_path(Path("AGENTS.md"), profile)[0] == "agent_config"
+
+
+@pytest.mark.parametrize("profile", ["llama_cpp_only", "torch_cpu"])
+def test_cpu_profiles_continue_rejecting_cuda_dependency_imports(profile):
+    assert scan.forbidden_import("cudart64_12.dll", profile)[0] == "cuda_import_in_bundle"

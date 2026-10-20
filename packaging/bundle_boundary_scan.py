@@ -53,8 +53,8 @@ TORCH_NATIVE_PREFIXES: tuple[str, ...] = (
     "torch_cpu.dll", "torch_cuda.dll", "torch_python.dll",
 )
 
-#: CUDA 运行库前缀。任何 profile 都不该出现在**发行包体**里 —— 边缘包靠运行时
-#: 外部 runtime 目录提供，PC CUDA 档则由安装器按需装到 runtime 目录外。
+#: CUDA 运行库前缀。CPU profiles 拒绝这些库及其导入；显式 torch_cuda
+#: 允许冻结其 CUDA 依赖闭包，与 CUDA spec 及模块顶部的 profile 合同一致。
 CUDA_NATIVE_PREFIXES: tuple[str, ...] = (
     "cudart", "cublas", "cudnn", "cufft", "curand", "cusolver", "cusparse",
     "nvrtc", "npp", "nccl", "nvToolsExt", "cupti", "cuda.dll", "nvcuda",
@@ -199,7 +199,7 @@ def classify_path(relative: Path, profile: str) -> tuple[str, str] | None:
             return "torch_in_llama_cpp_only", f"torch 原生库 `{basename}`"
 
     # CUDA 运行库只可能是**原生库**；`cudart.py` / `nccl.py` 是 torch 的 Python 封装。
-    if is_native and any(
+    if profile != "torch_cuda" and is_native and any(
         _native_name_matches(basename, prefix) for prefix in CUDA_NATIVE_PREFIXES
     ):
         return "cuda_runtime_in_bundle", (
@@ -350,7 +350,7 @@ def forbidden_import(name: str, profile: str) -> tuple[str, str] | None:
             _native_name_matches(name, prefix) for prefix in TORCH_NATIVE_PREFIXES
         ):
             return "torch_import_in_llama_cpp_only", f"导入 `{name}`"
-    if any(
+    if profile != "torch_cuda" and any(
         _native_name_matches(name, prefix) for prefix in CUDA_NATIVE_PREFIXES
     ):
         return "cuda_import_in_bundle", f"导入 `{name}`"
