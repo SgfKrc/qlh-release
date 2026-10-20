@@ -101,7 +101,7 @@ REM Tool overrides: QLH_KEEP_HEAD_TOOLCHAIN_BIN and QLH_KEEP_HEAD_CMAKE.
 REM The builder rejects stale output; use a fresh release checkout.
 if /i "!QLH_BUILD_PROFILE!"=="llama_cpp_only" (
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%QLH_CORE_ROOT%\scripts\model_tools\build_keep_head_cpu.ps1" ^
-        -SourceRoot "%QLH_CORE_ROOT%"
+        -SourceRoot "%QLH_CORE_ROOT%" -Python "%PYTHON%"
     if errorlevel 1 exit /b !errorlevel!
 )
 
